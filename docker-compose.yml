@@ -1,0 +1,106 @@
+version: '3.9'
+
+services:
+  # Microsoft SQL Server
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: crm_sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "CrmDev@123456"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "CrmDev@123456" -C -Q "SELECT 1" || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: crm_redis
+    command: redis-server --appendonly yes --requirepass ""
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: crm_backend
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DB_HOST: sqlserver
+      DB_PORT: 1433
+      DB_NAME: sales_crm
+      DB_USER: sa
+      DB_PASSWORD: CrmDev@123456
+      DB_ENCRYPT: "false"
+      DB_TRUST_CERT: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      JWT_ACCESS_SECRET: dev-access-secret-change-in-production-min32
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-production-min32
+      JWT_ACCESS_EXPIRES: 15m
+      JWT_REFRESH_EXPIRES: 7d
+      FRONTEND_URL: http://localhost:3000
+      TIMEZONE: Asia/Kolkata
+      BCRYPT_ROUNDS: "12"
+      IVR_API_BASE_URL: https://api.ivrsolutions.in
+      IVR_API_TOKEN: ""
+      IVR_SUBDOMAIN: ""
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/logs:/app/logs
+      - ./backend/uploads:/app/uploads
+      - /app/node_modules
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: crm_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api/v1
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:5000
+      NEXT_PUBLIC_APP_NAME: SalesCRM Pro
+      NEXT_PUBLIC_TIMEZONE: Asia/Kolkata
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  sqlserver_data:
+  redis_data:
