@@ -7,13 +7,13 @@
 
 ## 1. पोर्ट और डेटाबेस की जानकारी (Configuration Summary)
 
-- **Frontend Port:** `3025`
-- **Backend Port:** `5010`
-- **Backend Health Check:** `http://localhost:5010/health`
-- **Backend API URL:** `http://localhost:5010/api/v1`
-- **Frontend URL:** `http://localhost:3025`
-- **Database:** Microsoft SQL Server 2022 (Remote Host: `72.61.250.183:1433`, Database: `sales_crm`)
-  > **Note:** जो `.env` अभी प्रोजेक्ट में सेट है, वही सर्वर पर सीधे काम करेगी क्योंकि डेटाबेस पहले से ही रिमोट सर्वर पर लाइव चल रहा है।
+- **Server IP:** `159.65.154.5` (App Server jahan Frontend aur Backend chal rahe hain)
+- **Frontend Port:** `3025` -> `http://159.65.154.5:3025`
+- **Backend Port:** `5010` -> `http://159.65.154.5:5010`
+- **Backend Health Check:** `http://159.65.154.5:5010/health` (local: `http://localhost:5010/health`)
+- **Backend API URL:** `http://159.65.154.5:5010/api/v1`
+- **Database IP:** `72.61.250.183` (Microsoft SQL Server 2022 on `72.61.250.183:1433`, Database: `sales_crm`)
+  > **Note:** `72.61.250.183` IP sirf aur sirf remote SQL Database ke liye use hoti hai. Frontend aur Backend `159.65.154.5` server IP par run hote hain.
 
 ---
 
