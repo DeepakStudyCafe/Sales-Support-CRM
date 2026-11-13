@@ -87,7 +87,7 @@ export class AuthController {
         sendError(res, err.message, 401);
       } else {
         logger.error('Login error', { error: err.message });
-        sendError(res, 'Login failed. Please try again.', 500);
+        sendError(res, `Login failed: ${err.message}`, 500);
       }
     }
   }

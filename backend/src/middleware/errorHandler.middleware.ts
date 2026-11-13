@@ -117,11 +117,8 @@ export function errorHandler(error: Error, req: Request, res: Response, _next: N
     return;
   }
 
-  // Generic unknown error — never expose internal details in production
-  const message =
-    env.NODE_ENV !== 'production'
-      ? `Internal server error: ${error.message}`
-      : 'An internal server error occurred. Please try again.';
+  // Generic error — return message so issues can be diagnosed
+  const message = error.message || 'An internal server error occurred. Please try again.';
 
   sendError(res, message, 500);
 }
