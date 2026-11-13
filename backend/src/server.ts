@@ -34,10 +34,10 @@ async function startServer(): Promise<void> {
     // 5. Start background reminder engine
     reminderEngine.start(60000); // Check every minute
 
-    // 6. Listen on configured port
+    // 6. Listen on configured port on all network interfaces (0.0.0.0)
     const port = env.PORT;
-    server.listen(port, () => {
-      logger.info(`✅ Server listening on port ${port}`);
+    server.listen(port, '0.0.0.0', () => {
+      logger.info(`✅ Server listening on port ${port} (0.0.0.0)`);
       logger.info(`🌐 Health check: http://localhost:${port}/health`);
       logger.info(`📡 API endpoint: http://localhost:${port}/api/v1`);
     });

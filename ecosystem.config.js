@@ -12,13 +12,14 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 5010,
+        HOST: '0.0.0.0',
       },
     },
     {
       name: 'crm-frontend',
       cwd: './frontend',
       script: 'node_modules/next/dist/bin/next',
-      args: 'start -p 3025',
+      args: 'start -H 0.0.0.0 -p 3025',
       exec_mode: 'fork',
       instances: 1,
       autorestart: true,
@@ -27,6 +28,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3025,
+        HOSTNAME: '0.0.0.0',
       },
     },
   ],
