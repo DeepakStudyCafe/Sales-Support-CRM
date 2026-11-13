@@ -21,6 +21,12 @@ import {
   Headphones,
   Calendar,
   Plus,
+  FileSpreadsheet,
+  PhoneForwarded,
+  LifeBuoy,
+  CalendarPlus,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -35,6 +41,12 @@ import {
   Cell,
 } from 'recharts';
 import Link from 'next/link';
+import { ExcelImportModal } from '@/components/shared/ExcelImportModal';
+import { ExcelExportButton } from '@/components/shared/ExcelExportButton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -43,6 +55,34 @@ export default function OverviewDashboardPage() {
   const [dateRange, setDateRange] = useState('30');
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Quick Action Modal states
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isQuickCallOpen, setIsQuickCallOpen] = useState(false);
+  const [callDestination, setCallDestination] = useState('');
+  const [callDid, setCallDid] = useState('');
+  const [isCalling, setIsCalling] = useState(false);
+
+  const handleInitiateQuickCall = async () => {
+    if (!callDestination) {
+      toast.error('Please enter a destination phone number');
+      return;
+    }
+    setIsCalling(true);
+    try {
+      await api.post('/calls/click-to-call', {
+        destinationNumber: callDestination,
+        didNumber: callDid || undefined,
+      });
+      toast.success(`Call initiated to ${callDestination}. Your extension will ring first.`);
+      setIsQuickCallOpen(false);
+      setCallDestination('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to initiate telephony call');
+    } finally {
+      setIsCalling(false);
+    }
+  };
 
   const fetchDashboardData = useCallback(async () => {
     setIsLoading(true);
@@ -104,14 +144,100 @@ export default function OverviewDashboardPage() {
               </SelectContent>
             </Select>
 
+            <ExcelExportButton
+              module="leads"
+              label="Export Leads"
+              variant="outline"
+              size="sm"
+            />
+
             <Link href="/leads/add">
-              <Button size="sm" className="h-9 gap-1.5 text-xs font-semibold">
+              <Button size="sm" className="h-9 gap-1.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Plus className="h-3.5 w-3.5" /> Add Lead
               </Button>
             </Link>
           </div>
         }
       />
+
+      {/* Enterprise Quick Action Bar */}
+      <div className="rounded-2xl border bg-gradient-to-r from-slate-50 via-white to-indigo-50/40 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/20 p-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Quick Action Center
+            </h3>
+            <p className="text-xs text-muted-foreground">Fast-track key enterprise sales and customer support workflows</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          <Link href="/leads/add" className="w-full">
+            <Button variant="outline" className="w-full justify-start text-xs h-11 gap-2.5 font-medium border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20">
+              <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center">
+                <UserPlus className="h-4 w-4" />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-xs leading-none">Add Lead</p>
+                <span className="text-[10px] text-muted-foreground">New Prospect</span>
+              </div>
+            </Button>
+          </Link>
+
+          <Button
+            variant="outline"
+            onClick={() => setIsQuickCallOpen(true)}
+            className="w-full justify-start text-xs h-11 gap-2.5 font-medium border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20"
+          >
+            <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
+              <PhoneForwarded className="h-4 w-4" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-xs leading-none">Click-to-Call</p>
+              <span className="text-[10px] text-muted-foreground">Live IVR Dialer</span>
+            </div>
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => setIsImportModalOpen(true)}
+            className="w-full justify-start text-xs h-11 gap-2.5 font-medium border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20"
+          >
+            <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
+              <FileSpreadsheet className="h-4 w-4" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-xs leading-none">Import Excel</p>
+              <span className="text-[10px] text-muted-foreground">Bulk .xlsx upload</span>
+            </div>
+          </Button>
+
+          <Link href="/tickets/create" className="w-full">
+            <Button variant="outline" className="w-full justify-start text-xs h-11 gap-2.5 font-medium border-slate-200 dark:border-slate-800 hover:border-purple-400 dark:hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-950/20">
+              <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center">
+                <LifeBuoy className="h-4 w-4" />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-xs leading-none">New Ticket</p>
+                <span className="text-[10px] text-muted-foreground">Support & SLA</span>
+              </div>
+            </Button>
+          </Link>
+
+          <Link href="/follow-ups" className="w-full">
+            <Button variant="outline" className="w-full justify-start text-xs h-11 gap-2.5 font-medium border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-950/20">
+              <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+                <CalendarPlus className="h-4 w-4" />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-xs leading-none">Schedule Task</p>
+                <span className="text-[10px] text-muted-foreground">Reminders & Demos</span>
+              </div>
+            </Button>
+          </Link>
+        </div>
+      </div>
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -318,26 +444,101 @@ export default function OverviewDashboardPage() {
               Manage All Leads
             </Button>
           </Link>
-          <Link href="/calling/click-to-call">
+          <Link href="/calling">
             <Button variant="outline" className="w-full justify-start text-xs h-10 gap-2">
               <PhoneCall className="h-4 w-4 text-emerald-500" />
-              Click-to-Call Dialer
+              Calling & IVR Hub
             </Button>
           </Link>
-          <Link href="/follow-ups/today">
+          <Link href="/follow-ups">
             <Button variant="outline" className="w-full justify-start text-xs h-10 gap-2">
               <Clock className="h-4 w-4 text-amber-500" />
-              Today's Follow-ups
+              Tasks & Follow-ups
             </Button>
           </Link>
-          <Link href="/tickets/create">
+          <Link href="/tickets">
             <Button variant="outline" className="w-full justify-start text-xs h-10 gap-2">
               <Headphones className="h-4 w-4 text-purple-500" />
-              Create Support Ticket
+              Support Tickets Hub
             </Button>
           </Link>
         </div>
       </div>
+
+      {/* Excel Import Modal */}
+      <ExcelImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        module="leads"
+        onSuccess={() => {
+          fetchDashboardData();
+          toast.success('Leads imported! Dashboard metrics refreshed.');
+        }}
+      />
+
+      {/* Quick Call Modal */}
+      <Dialog open={isQuickCallOpen} onOpenChange={setIsQuickCallOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PhoneCall className="h-5 w-5 text-emerald-600" />
+              Quick Click-to-Call Dialer
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="quick-phone" className="text-xs">
+                Destination Phone Number *
+              </Label>
+              <Input
+                id="quick-phone"
+                placeholder="e.g. +919876543210"
+                value={callDestination}
+                onChange={(e) => setCallDestination(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="quick-did" className="text-xs">
+                Caller ID / Outbound DID (Optional)
+              </Label>
+              <Input
+                id="quick-did"
+                placeholder="Leave blank to use default company DID"
+                value={callDid}
+                onChange={(e) => setCallDid(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              IVR Cloud bridge will connect your agent extension first, then dial the customer.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setIsQuickCallOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5"
+              onClick={handleInitiateQuickCall}
+              disabled={isCalling}
+            >
+              {isCalling ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <PhoneCall className="h-3.5 w-3.5" />
+                  Initiate Call
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

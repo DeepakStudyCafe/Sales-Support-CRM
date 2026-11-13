@@ -27,8 +27,8 @@ export default function CallingSettingsPage() {
   });
 
   const webhookUrl = typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:5000/api/v1/calls/webhook`
-    : 'http://localhost:5000/api/v1/calls/webhook';
+    ? `${window.location.protocol}//${window.location.hostname}:5010/api/v1/calls/webhook`
+    : 'http://localhost:5010/api/v1/calls/webhook';
 
   useEffect(() => {
     async function loadSettings() {

@@ -11,16 +11,35 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { ExcelImportModal } from '@/components/shared/ExcelImportModal';
+import { ExcelExportButton } from '@/components/shared/ExcelExportButton';
 import { leadService } from '@/services/lead.service';
 import { Lead } from '@/types/lead';
 import { PaginationMeta } from '@/types/api';
 import { formatDate } from '@/lib/utils';
-import { Plus, Phone, Eye, Trash2, ArrowRightLeft, UserCheck } from 'lucide-react';
+import {
+  Plus,
+  Phone,
+  Eye,
+  Trash2,
+  ArrowRightLeft,
+  UserCheck,
+  FileSpreadsheet,
+  Users,
+  Kanban,
+  UserPlus,
+  Compass,
+  UserX,
+  CheckCircle2,
+  Clock,
+  Loader2,
+} from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import api from '@/services/api';
 
 export default function LeadsPage() {
+  const [activeTab, setActiveTab] = useState<'all' | 'pipeline' | 'assignment' | 'sources' | 'lost'>('all');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
@@ -33,9 +52,17 @@ export default function LeadsPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isAllFilteredSelected, setIsAllFilteredSelected] = useState(false);
 
-  // Delete dialog
+  // Modals
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
+  const [isBulkStatusOpen, setIsBulkStatusOpen] = useState(false);
+  const [targetAgentId, setTargetAgentId] = useState('');
+  const [targetStatus, setTargetStatus] = useState('Contacted');
+  const [usersList, setUsersList] = useState<any[]>([]);
 
   // Quick call modal
   const [callingLead, setCallingLead] = useState<Lead | null>(null);
@@ -45,6 +72,15 @@ export default function LeadsPage() {
   // Convert modal
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
   const [isConverting, setIsConverting] = useState(false);
+
+  // Fetch Users for Bulk Assignment
+  useEffect(() => {
+    api.get('/users?limit=50').then((res) => {
+      if (res.data?.success && res.data?.data) {
+        setUsersList(res.data.data);
+      }
+    }).catch(() => {});
+  }, []);
 
   const fetchLeads = useCallback(async () => {
     setIsLoading(true);
@@ -74,6 +110,72 @@ export default function LeadsPage() {
     fetchLeads();
   }, [fetchLeads]);
 
+  // Handle Bulk Operations
+  const handleBulkAssign = async () => {
+    if (!targetAgentId) {
+      toast.error('Please select an agent to assign');
+      return;
+    }
+    try {
+      const res = await api.post('/bulk/action', {
+        module: 'leads',
+        action: 'assign',
+        ids: selectedIds,
+        payload: { assignedTo: targetAgentId },
+      });
+      toast.success(res.data?.message || `Successfully assigned ${selectedIds.length} leads.`);
+      setIsBulkAssignOpen(false);
+      setSelectedIds([]);
+      fetchLeads();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to bulk assign leads');
+    }
+  };
+
+  const handleBulkStatus = async () => {
+    try {
+      const res = await api.post('/bulk/action', {
+        module: 'leads',
+        action: 'status',
+        ids: selectedIds,
+        payload: { status: targetStatus },
+      });
+      toast.success(res.data?.message || `Status updated for ${selectedIds.length} leads.`);
+      setIsBulkStatusOpen(false);
+      setSelectedIds([]);
+      fetchLeads();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update lead status');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      const res = await api.post('/bulk/action', {
+        module: 'leads',
+        action: 'delete',
+        ids: selectedIds,
+      });
+      toast.success(res.data?.message || `Successfully deleted ${selectedIds.length} leads.`);
+      setIsBulkDeleteOpen(false);
+      setSelectedIds([]);
+      fetchLeads();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete leads');
+    }
+  };
+
+  const handleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      setSelectedIds([]);
+      setIsAllFilteredSelected(false);
+    } else {
+      setSelectedIds(leads.map((l) => l.id));
+      setIsAllFilteredSelected(true);
+      toast.info(`Selected all ${pagination.total} records matching current filter.`);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
@@ -102,7 +204,7 @@ export default function LeadsPage() {
         setCallingLead(null);
       }
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Call initiation failed. Verify IVR extension in settings.');
+      toast.error(err?.response?.data?.message || 'Failed to initiate call');
     } finally {
       setIsCalling(false);
     }
@@ -112,9 +214,9 @@ export default function LeadsPage() {
     if (!convertingLead) return;
     setIsConverting(true);
     try {
-      const res = await api.patch(`/leads/${convertingLead.id}/convert`, {});
+      const res = await leadService.convertToCustomer(convertingLead.id);
       if (res.data.success) {
-        toast.success('Lead converted to Customer successfully!');
+        toast.success('Lead successfully converted to Customer 360');
         setConvertingLead(null);
         fetchLeads();
       }
@@ -128,92 +230,92 @@ export default function LeadsPage() {
   const columns: ColumnDef<Lead>[] = [
     {
       key: 'name',
-      header: 'Lead Name',
+      header: 'Lead Name & Company',
       sortable: true,
-      render: (lead) => (
+      cell: (lead: Lead) => (
         <div className="flex flex-col">
           <Link
             href={`/leads/${lead.id}`}
-            className="font-semibold text-primary hover:underline line-clamp-1"
+            className="font-medium text-foreground hover:text-primary hover:underline"
           >
             {lead.firstName} {lead.lastName}
           </Link>
-          {lead.company && (
-            <span className="text-[11px] text-muted-foreground line-clamp-1">{lead.company}</span>
-          )}
+          <span className="text-xs text-muted-foreground">{lead.company || 'Individual Prospect'}</span>
         </div>
       ),
     },
     {
       key: 'phone',
-      header: 'Contact',
-      render: (lead) => (
+      header: 'Contact Info',
+      cell: (lead: Lead) => (
         <div className="flex flex-col text-xs">
-          <span className="font-medium text-foreground">{lead.phone}</span>
-          {lead.email && <span className="text-muted-foreground text-[11px]">{lead.email}</span>}
+          <span className="font-mono text-foreground">{lead.phone}</span>
+          <span className="text-muted-foreground">{lead.email || '-'}</span>
         </div>
+      ),
+    },
+    {
+      key: 'source',
+      header: 'Source',
+      cell: (lead: Lead) => (
+        <span className="text-xs font-medium text-muted-foreground">
+          {lead.source?.name || 'Website Direct'}
+        </span>
       ),
     },
     {
       key: 'status',
       header: 'Status',
       sortable: true,
-      render: (lead) => <StatusBadge status={lead.status} />,
+      cell: (lead: Lead) => <StatusBadge status={lead.status} />,
     },
     {
       key: 'priority',
       header: 'Priority',
       sortable: true,
-      render: (lead) => <PriorityBadge priority={lead.priority} />,
-    },
-    {
-      key: 'source',
-      header: 'Source',
-      render: (lead) => (
-        <span className="text-xs text-muted-foreground">{lead.source?.name || (lead as any).source_name || '-'}</span>
-      ),
+      cell: (lead: Lead) => <PriorityBadge priority={lead.priority} />,
     },
     {
       key: 'assignedTo',
-      header: 'Assigned To',
-      render: (lead) => (
-        <span className="text-xs font-medium text-foreground">
-          {lead.assignedToUser?.fullName || (lead as any).assigned_to_name || (typeof lead.assignedTo === 'string' ? lead.assignedTo : 'Unassigned')}
-        </span>
-      ),
+      header: 'Assigned Agent',
+      cell: (lead: Lead) => {
+        const agentName = (lead as any).assigned_to_name || lead.assignedToUser?.fullName || (typeof lead.assignedTo === 'string' && lead.assignedTo.length < 25 ? lead.assignedTo : null);
+        return (
+          <span className="text-xs text-muted-foreground">
+            {agentName || 'Unassigned'}
+          </span>
+        );
+      },
     },
     {
       key: 'createdAt',
-      header: 'Created',
+      header: 'Created Date',
       sortable: true,
-      render: (lead) => (
+      cell: (lead: Lead) => (
         <span className="text-xs text-muted-foreground">{formatDate(lead.createdAt)}</span>
       ),
     },
     {
       key: 'actions',
       header: 'Actions',
-      render: (lead) => (
-        <div className="flex items-center gap-1.5">
-          {/* Quick Click-to-Call */}
+      cell: (lead: Lead) => (
+        <div className="flex items-center gap-1">
           <Button
             size="icon"
             variant="ghost"
             className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
             onClick={() => setCallingLead(lead)}
-            title="Click to Call"
+            title="Click-to-Call Customer"
           >
             <Phone className="h-4 w-4" />
           </Button>
 
-          {/* View Details */}
           <Link href={`/leads/${lead.id}`}>
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="View Lead Details">
               <Eye className="h-4 w-4" />
             </Button>
           </Link>
 
-          {/* Convert to Customer */}
           {lead.status !== 'Converted' && (
             <Button
               size="icon"
@@ -226,7 +328,6 @@ export default function LeadsPage() {
             </Button>
           )}
 
-          {/* Delete */}
           <Button
             size="icon"
             variant="ghost"
@@ -244,21 +345,31 @@ export default function LeadsPage() {
   return (
     <div className="space-y-6 pb-12">
       <PageHeader
-        title="All Leads"
-        subtitle="Manage prospective clients, lead qualification, phone calls and conversion history"
+        title="Leads Hub"
+        subtitle="Manage prospective clients, qualification pipeline, automated assignment, and conversion tracking"
         breadcrumbs={[
           { label: 'Sales', href: '/leads' },
-          { label: 'All Leads' },
+          { label: 'Leads Hub' },
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Link href="/leads/pipeline">
-              <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs">
-                <ArrowRightLeft className="h-3.5 w-3.5" /> Pipeline Board
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsImportModalOpen(true)}
+              className="h-9 gap-1.5 text-xs border-emerald-600/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" /> Import Excel
+            </Button>
+
+            <ExcelExportButton
+              module="leads"
+              selectedIds={selectedIds}
+              label="Export Excel"
+            />
+
             <Link href="/leads/add">
-              <Button size="sm" className="h-9 gap-1.5 text-xs font-semibold">
+              <Button size="sm" className="h-9 gap-1.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Plus className="h-3.5 w-3.5" /> Add Lead
               </Button>
             </Link>
@@ -266,6 +377,61 @@ export default function LeadsPage() {
         }
       />
 
+      {/* Unified Tabbed Navigation Hub */}
+      <div className="flex items-center gap-2 border-b border-border pb-1 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg transition-all ${
+            activeTab === 'all'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+          }`}
+        >
+          <Users className="h-3.5 w-3.5" />
+          All Leads
+          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">
+            {pagination.total}
+          </span>
+        </button>
+
+        <Link href="/leads/pipeline">
+          <button
+            className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
+          >
+            <Kanban className="h-3.5 w-3.5" />
+            Pipeline Board
+          </button>
+        </Link>
+
+        <Link href="/leads/assignment">
+          <button
+            className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Lead Assignment
+          </button>
+        </Link>
+
+        <Link href="/leads/sources">
+          <button
+            className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
+          >
+            <Compass className="h-3.5 w-3.5" />
+            Lead Sources
+          </button>
+        </Link>
+
+        <Link href="/leads/lost">
+          <button
+            className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
+          >
+            <UserX className="h-3.5 w-3.5" />
+            Lost Leads & Winback
+          </button>
+        </Link>
+      </div>
+
+      {/* Main Leads Table with Full Bulk Operations */}
       <DataTable
         columns={columns}
         data={leads}
@@ -280,6 +446,26 @@ export default function LeadsPage() {
         searchPlaceholder="Search by name, phone, email or company..."
         selectedIds={selectedIds}
         onSelectChange={setSelectedIds}
+        onSelectAllFiltered={handleSelectAllFiltered}
+        isAllFilteredSelected={isAllFilteredSelected}
+        bulkActions={[
+          {
+            label: 'Assign Agent',
+            icon: <UserPlus className="h-3.5 w-3.5" />,
+            onClick: () => setIsBulkAssignOpen(true),
+          },
+          {
+            label: 'Change Status',
+            icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+            onClick: () => setIsBulkStatusOpen(true),
+          },
+          {
+            label: 'Delete Selected',
+            icon: <Trash2 className="h-3.5 w-3.5 text-rose-400" />,
+            variant: 'destructive',
+            onClick: () => setIsBulkDeleteOpen(true),
+          },
+        ]}
         filterSlot={
           <div className="flex items-center gap-2">
             <Select
@@ -325,7 +511,103 @@ export default function LeadsPage() {
         }
       />
 
-      {/* Delete Confirmation */}
+      {/* Excel Import Modal */}
+      <ExcelImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        module="leads"
+        onSuccess={() => {
+          fetchLeads();
+          toast.success('Leads imported successfully! Table refreshed.');
+        }}
+      />
+
+      {/* Bulk Assign Dialog */}
+      <Dialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <UserPlus className="h-5 w-5 text-indigo-600" />
+              Bulk Assign {selectedIds.length} Selected Leads
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Select Target Sales Agent</Label>
+              <Select value={targetAgentId} onValueChange={setTargetAgentId}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Choose sales representative..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {usersList.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.first_name} {u.last_name} ({u.role_name || u.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setIsBulkAssignOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleBulkAssign} className="bg-primary text-xs">
+              Confirm Assignment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Status Dialog */}
+      <Dialog open={isBulkStatusOpen} onOpenChange={setIsBulkStatusOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <CheckCircle2 className="h-5 w-5 text-indigo-600" />
+              Update Status for {selectedIds.length} Leads
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Select New Stage / Status</Label>
+              <Select value={targetStatus} onValueChange={setTargetStatus}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="New">New</SelectItem>
+                  <SelectItem value="Contacted">Contacted</SelectItem>
+                  <SelectItem value="Interested">Interested</SelectItem>
+                  <SelectItem value="Qualified">Qualified</SelectItem>
+                  <SelectItem value="Lost">Lost</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setIsBulkStatusOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleBulkStatus} className="bg-primary text-xs">
+              Apply Status Change
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Dialog */}
+      <ConfirmDialog
+        open={isBulkDeleteOpen}
+        onOpenChange={setIsBulkDeleteOpen}
+        title={`Delete ${selectedIds.length} Selected Leads`}
+        description={`Are you sure you want to permanently delete these ${selectedIds.length} leads? This action will remove associated records and activity history.`}
+        confirmLabel="Confirm Bulk Delete"
+        variant="destructive"
+        onConfirm={handleBulkDelete}
+      />
+
+      {/* Single Delete Confirmation */}
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={(open) => !open && setDeleteId(null)}
@@ -426,4 +708,3 @@ export default function LeadsPage() {
     </div>
   );
 }
-

@@ -5,8 +5,8 @@ dotenv.config();
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.string().transform(Number).default('5000'),
-  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+  PORT: z.string().transform(Number).default('5010'),
+  FRONTEND_URL: z.string().url().default('http://localhost:3025'),
 
   // SQL Server
   DB_HOST: z.string().min(1, 'DB_HOST is required'),
@@ -54,8 +54,8 @@ if (!parseResult.success) {
     // In test environment, populate safe defaults to allow unit tests to run without active DB
     parsedEnv = environmentSchema.parse({
       NODE_ENV: 'test',
-      PORT: '5000',
-      FRONTEND_URL: 'http://localhost:3000',
+      PORT: '5010',
+      FRONTEND_URL: 'http://localhost:3025',
       DB_HOST: 'localhost',
       DB_PORT: '1433',
       DB_NAME: 'sales_crm_test',

@@ -24,3 +24,4 @@ router.post('/export/:module', (req, res) => bulkController.exportData(req, res)
 router.post('/action', (req, res) => bulkController.executeBulkAction(req, res));
 
 export default router;
+

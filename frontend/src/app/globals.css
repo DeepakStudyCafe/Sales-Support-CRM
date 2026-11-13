@@ -6,49 +6,49 @@
 
 @layer base {
   :root {
-    /* Light Theme */
-    --background: 0 0% 98%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* Enterprise Indigo Light Theme */
+    --background: 210 40% 98%; /* #f8fafc light slate */
+    --foreground: 222.2 47.4% 11.2%; /* deep slate text */
+    --card: 0 0% 100%; /* pure white cards */
+    --card-foreground: 222.2 47.4% 11.2%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --primary: 238.7 83.5% 66.7%; /* #6366f1 modern indigo */
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
+    --secondary: 215 28% 95%; /* soft slate secondary */
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 215 28% 95%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
+    --accent: 238.7 83.5% 96%;
+    --accent-foreground: 243.4 75.4% 58.6%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-    --success: 142.1 76.2% 36.3%;
+    --border: 214.3 28% 89%; /* crisp slate border */
+    --input: 214.3 28% 89%;
+    --ring: 238.7 83.5% 66.7%;
+    --radius: 0.625rem;
+    --success: 152 76% 36%; /* emerald green */
     --success-foreground: 355.7 100% 97.3%;
-    --warning: 32.1 94.6% 43.7%;
+    --warning: 38 92% 50%; /* amber */
     --warning-foreground: 355.7 100% 97.3%;
-    --info: 199.4 93.4% 41%;
+    --info: 217 91% 60%;
     --info-foreground: 210 40% 98%;
     --sidebar: 222 47% 11%;
     --sidebar-foreground: 210 40% 96%;
     --sidebar-border: 221.2 50% 20%;
-    --sidebar-accent: 221.2 83.2% 53.3%;
+    --sidebar-accent: 238.7 83.5% 66.7%;
     --sidebar-accent-foreground: 210 40% 98%;
   }
 
   .dark {
-    /* Dark Theme */
+    /* Enterprise Indigo Dark Theme */
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
     --card: 222.2 84% 7%;
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 7%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
+    --primary: 238.7 83.5% 66.7%;
     --primary-foreground: 222.2 47.4% 11.2%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -60,17 +60,17 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --success: 142.1 70.6% 45.3%;
+    --ring: 238.7 83.5% 66.7%;
+    --success: 152 70% 45%;
     --success-foreground: 144.9 80.4% 10%;
-    --warning: 32.1 100% 55%;
+    --warning: 38 92% 50%;
     --warning-foreground: 20.9 91.7% 14.1%;
-    --info: 199.4 93.4% 51%;
+    --info: 217 91% 60%;
     --info-foreground: 198 100% 10%;
     --sidebar: 222.2 84% 4.9%;
     --sidebar-foreground: 210 40% 90%;
     --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-accent: 217.2 91.2% 59.8%;
+    --sidebar-accent: 238.7 83.5% 66.7%;
     --sidebar-accent-foreground: 222.2 47.4% 11.2%;
   }
 }

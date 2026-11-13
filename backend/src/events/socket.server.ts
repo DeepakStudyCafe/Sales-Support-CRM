@@ -9,7 +9,7 @@ let io: SocketIOServer | null = null;
 export async function initializeSocketServer(httpServer: HTTPServer): Promise<SocketIOServer> {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: [env.FRONTEND_URL, 'http://localhost:3000'],
+      origin: [env.FRONTEND_URL, 'http://localhost:3025', 'http://localhost:3000'],
       methods: ['GET', 'POST'],
       credentials: true,
     },

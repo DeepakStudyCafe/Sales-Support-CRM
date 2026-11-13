@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ExcelExportButton } from '@/components/shared/ExcelExportButton';
 import { PaginationMeta } from '@/types/api';
 import { formatDate } from '@/lib/utils';
 import {
@@ -20,13 +21,17 @@ import {
   Copy,
   Check,
   Shield,
-  PhoneCall
+  PhoneCall,
+  FolderTree,
+  ShieldAlert,
+  History,
 } from 'lucide-react';
 import api from '@/services/api';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
 export default function AllUsersPage() {
+  const [activeTab, setActiveTab] = useState<'all' | 'teams' | 'roles' | 'history'>('all');
   const [users, setUsers] = useState<any[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
@@ -38,6 +43,8 @@ export default function AllUsersPage() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isAllFilteredSelected, setIsAllFilteredSelected] = useState(false);
 
   // Reset Password Dialog state
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
@@ -78,19 +85,44 @@ export default function AllUsersPage() {
   }, [fetchUsers]);
 
   const handleToggleStatus = async (user: any) => {
-    const action = user.is_active ? 'deactivate' : 'activate';
     try {
-      const res = await api.patch(`/users/${user.id}/${action}`);
-      if (res.data.success) {
-        toast.success(`User ${user.first_name} ${user.last_name} ${action}d successfully`);
-        fetchUsers();
-      }
+      await api.patch(`/users/${user.id}/status`, { isActive: !user.is_active });
+      toast.success(`User ${user.is_active ? 'deactivated' : 'activated'} successfully`);
+      fetchUsers();
     } catch {
-      toast.error(`Failed to ${action} user`);
+      toast.error('Failed to update user status');
     }
   };
 
-  const initiateResetPassword = async (user: any) => {
+  // Bulk Actions
+  const handleBulkStatusChange = async (activate: boolean) => {
+    try {
+      const res = await api.post('/bulk/action', {
+        module: 'users',
+        action: 'status',
+        ids: selectedIds,
+        payload: { isActive: activate },
+      });
+      toast.success(res.data?.message || `Updated status for ${selectedIds.length} users.`);
+      setSelectedIds([]);
+      fetchUsers();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update users');
+    }
+  };
+
+  const handleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      setSelectedIds([]);
+      setIsAllFilteredSelected(false);
+    } else {
+      setSelectedIds(users.map((u) => u.id));
+      setIsAllFilteredSelected(true);
+      toast.info(`Selected all ${pagination.total} users.`);
+    }
+  };
+
+  const initiateResetPassword = (user: any) => {
     setSelectedUser(user);
     setTempPassword(null);
     setCopied(false);
@@ -102,9 +134,12 @@ export default function AllUsersPage() {
     setIsResetting(true);
     try {
       const res = await api.post(`/users/${selectedUser.id}/reset-password`);
-      if (res.data.success && res.data.data) {
+      if (res.data.success && res.data.data?.temporaryPassword) {
         setTempPassword(res.data.data.temporaryPassword);
-        toast.success('Password reset successfully');
+        toast.success(`Password reset for ${selectedUser.first_name}`);
+      } else {
+        toast.success('Temporary password generated and sent to user email');
+        setResetDialogOpen(false);
       }
     } catch {
       toast.error('Failed to reset password');
@@ -117,54 +152,62 @@ export default function AllUsersPage() {
     if (tempPassword) {
       navigator.clipboard.writeText(tempPassword);
       setCopied(true);
+      toast.info('Password copied to clipboard');
       setTimeout(() => setCopied(false), 2000);
-      toast.success('Temporary password copied to clipboard');
+    }
+  };
+
+  const getRoleBadgeVariant = (role: string) => {
+    switch (role) {
+      case 'Super Admin':
+        return 'destructive';
+      case 'Admin':
+        return 'default';
+      case 'Sales':
+        return 'secondary';
+      case 'Support':
+        return 'outline';
+      default:
+        return 'secondary';
     }
   };
 
   const columns: ColumnDef<any>[] = [
     {
       key: 'name',
-      header: 'Employee Name & Email',
+      header: 'Full Name',
+      sortable: true,
       cell: (row) => (
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs uppercase">
-            {row.first_name?.[0] || 'U'}{row.last_name?.[0] || ''}
-          </div>
-          <div>
-            <p className="font-semibold text-foreground text-sm">
-              {row.first_name} {row.last_name}
-            </p>
-            <p className="text-xs text-muted-foreground">{row.email}</p>
-          </div>
+        <div className="flex flex-col">
+          <span className="font-semibold text-foreground text-xs">
+            {row.first_name} {row.last_name}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{row.email}</span>
         </div>
       ),
     },
     {
       key: 'role_name',
       header: 'Role',
-      cell: (row) => {
-        const role = row.role_name;
-        let variant: 'default' | 'secondary' | 'outline' = 'secondary';
-        if (role === 'Super Admin') variant = 'default';
-        return (
-          <span className="inline-flex items-center gap-1">
-            <Shield className="h-3 w-3 text-muted-foreground" />
-            <Badge variant={variant} className="text-xs font-medium">
-              {role}
-            </Badge>
-          </span>
-        );
-      },
+      sortable: true,
+      cell: (row) => (
+        <Badge variant={getRoleBadgeVariant(row.role_name)} className="text-[10px]">
+          {row.role_name}
+        </Badge>
+      ),
     },
     {
-      key: 'department_name',
-      header: 'Department & Team',
+      key: 'phone',
+      header: 'Phone',
+      cell: (row) => <span className="font-mono text-xs">{row.phone || '—'}</span>,
+    },
+    {
+      key: 'department',
+      header: 'Department / Team',
       cell: (row) => (
-        <div className="text-xs">
-          <p className="font-medium text-foreground">{row.department_name || 'General'}</p>
-          <p className="text-muted-foreground">{row.team_name || 'No Team'}</p>
-        </div>
+        <span className="text-xs text-muted-foreground">
+          {row.department_name || 'General'}
+        </span>
       ),
     },
     {
@@ -237,132 +280,181 @@ export default function AllUsersPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16">
       <PageHeader
-        title="All Users & Employees"
-        subtitle="Manage user accounts, credentials, IVR extensions, and system access"
+        title="User Management Hub"
+        subtitle="Manage employee accounts, role-based access control, IVR extensions, and departments"
         breadcrumbs={[
-          { label: 'User Management', href: '/users' },
-          { label: 'All Users' },
+          { label: 'Admin', href: '/users' },
+          { label: 'Users Hub' },
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/users/create-admin">Create Admin</Link>
-            </Button>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/users/create-sales">Create Sales</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/users/create-support">
-                <UserPlus className="h-4 w-4 mr-1.5" /> Create Support
-              </Link>
-            </Button>
+            <ExcelExportButton module="users" selectedIds={selectedIds} label="Export Users" />
+            <Link href="/users/create-admin">
+              <Button size="sm" className="h-9 gap-1.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground">
+                <UserPlus className="h-3.5 w-3.5" /> Create User
+              </Button>
+            </Link>
           </div>
         }
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={roleFilter} onValueChange={(val) => { setRoleFilter(val); setPagination(p => ({ ...p, page: 1 })); }}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="Admin">Admin</SelectItem>
-            <SelectItem value="Sales">Sales</SelectItem>
-            <SelectItem value="Support">Support</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Unified Tabbed Navigation Hub */}
+      <div className="flex items-center gap-2 border-b border-border pb-1 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg transition-all ${
+            activeTab === 'all'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+          }`}
+        >
+          <Users className="h-3.5 w-3.5" />
+          All Employees
+          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">
+            {pagination.total}
+          </span>
+        </button>
 
-        <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPagination(p => ({ ...p, page: 1 })); }}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="active">Active Only</SelectItem>
-            <SelectItem value="inactive">Inactive Only</SelectItem>
-          </SelectContent>
-        </Select>
+        <Link href="/users/teams">
+          <button className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all">
+            <FolderTree className="h-3.5 w-3.5" />
+            Teams & Departments
+          </button>
+        </Link>
+
+        <Link href="/users/roles-permissions">
+          <button className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all">
+            <ShieldAlert className="h-3.5 w-3.5" />
+            Roles & Permissions
+          </button>
+        </Link>
+
+        <Link href="/activity-logs/login-history">
+          <button className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all">
+            <History className="h-3.5 w-3.5" />
+            Login & Activity History
+          </button>
+        </Link>
       </div>
 
+      {/* Users Table with Bulk Operations */}
       <DataTable
         columns={columns}
         data={users}
+        pagination={pagination}
         isLoading={isLoading}
-        pagination={{
-          page: pagination.page,
-          totalPages: pagination.totalPages,
-          total: pagination.total,
-          limit: pagination.limit,
-          onPageChange: (newPage) => setPagination((p) => ({ ...p, page: newPage })),
-          onLimitChange: (newLimit) => setPagination((p) => ({ ...p, limit: newLimit, page: 1 })),
+        onPageChange={(p) => setPagination((prev) => ({ ...prev, page: p }))}
+        onLimitChange={(l) => setPagination((prev) => ({ ...prev, limit: l, page: 1 }))}
+        onSearch={(q) => {
+          setSearchQuery(q);
+          setPagination((prev) => ({ ...prev, page: 1 }));
         }}
-        search={{
-          value: searchQuery,
-          onChange: setSearchQuery,
-          placeholder: 'Search users by name or email...',
-        }}
-        emptyState={{
-          icon: Users,
-          title: 'No users found',
-          description: 'Try adjusting search or filters.',
-        }}
+        searchPlaceholder="Search by name, email, or extension..."
+        selectedIds={selectedIds}
+        onSelectChange={setSelectedIds}
+        onSelectAllFiltered={handleSelectAllFiltered}
+        isAllFilteredSelected={isAllFilteredSelected}
+        bulkActions={[
+          {
+            label: 'Activate Selected',
+            icon: <UserCheck className="h-3.5 w-3.5 text-emerald-400" />,
+            onClick: () => handleBulkStatusChange(true),
+          },
+          {
+            label: 'Deactivate Selected',
+            icon: <UserX className="h-3.5 w-3.5 text-rose-400" />,
+            variant: 'destructive',
+            onClick: () => handleBulkStatusChange(false),
+          },
+        ]}
+        filterSlot={
+          <div className="flex gap-2">
+            <Select
+              value={roleFilter}
+              onValueChange={(val) => {
+                setRoleFilter(val);
+                setPagination((prev) => ({ ...prev, page: 1 }));
+              }}
+            >
+              <SelectTrigger className="w-[130px] h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Roles</SelectItem>
+                <SelectItem value="Super Admin">Super Admin</SelectItem>
+                <SelectItem value="Admin">Admin</SelectItem>
+                <SelectItem value="Sales">Sales</SelectItem>
+                <SelectItem value="Support">Support</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={statusFilter}
+              onValueChange={(val) => {
+                setStatusFilter(val);
+                setPagination((prev) => ({ ...prev, page: 1 }));
+              }}
+            >
+              <SelectTrigger className="w-[110px] h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        }
       />
 
-      {/* Reset Password Modal */}
+      {/* Reset Password Dialog */}
       <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reset User Password</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" />
+              Reset User Password
+            </DialogTitle>
           </DialogHeader>
 
           {!tempPassword ? (
-            <div className="space-y-3 py-2">
-              <p className="text-sm text-foreground">
-                Are you sure you want to reset the password for employee{' '}
-                <strong className="text-primary">{selectedUser?.first_name} {selectedUser?.last_name}</strong> ({selectedUser?.email})?
+            <div className="space-y-4 py-2">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Generate a temporary system password for{' '}
+                <strong className="text-foreground">
+                  {selectedUser?.first_name} {selectedUser?.last_name}
+                </strong>{' '}
+                ({selectedUser?.email}). The user will be required to change their password upon their next login.
               </p>
-              <p className="text-xs text-muted-foreground">
-                A secure temporary password will be generated. The user will be required to change it on their next login.
-              </p>
-              <DialogFooter className="pt-4">
-                <Button variant="outline" onClick={() => setResetDialogOpen(false)}>
+              <DialogFooter>
+                <Button variant="outline" size="sm" onClick={() => setResetDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleConfirmReset} disabled={isResetting}>
-                  {isResetting ? 'Resetting...' : 'Generate Temporary Password'}
+                <Button size="sm" onClick={handleConfirmReset} isLoading={isResetting} className="font-semibold">
+                  Generate Temp Password
                 </Button>
               </DialogFooter>
             </div>
           ) : (
             <div className="space-y-4 py-2">
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-800 dark:text-emerald-300 text-sm">
-                Password has been successfully reset!
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Temporary Password:</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={tempPassword}
-                    className="flex-1 font-mono text-sm px-3 py-2 rounded-md border bg-muted"
-                  />
-                  <Button variant="outline" size="icon" onClick={copyToClipboard}>
-                    {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-4 space-y-2">
+                <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-400">
+                  Temporary Password Generated:
+                </p>
+                <div className="flex items-center justify-between bg-white dark:bg-black/40 px-3 py-2 rounded border border-emerald-200 dark:border-emerald-800 font-mono text-sm tracking-wider">
+                  <span className="font-bold text-foreground">{tempPassword}</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyToClipboard}>
+                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
               </div>
-
-              <p className="text-xs text-muted-foreground">
-                Please copy and share this temporary password securely with the employee. It will not be shown again.
-              </p>
-
-              <DialogFooter className="pt-2">
-                <Button onClick={() => setResetDialogOpen(false)}>Done</Button>
+              <DialogFooter>
+                <Button size="sm" onClick={() => setResetDialogOpen(false)}>
+                  Done
+                </Button>
               </DialogFooter>
             </div>
           )}
@@ -371,4 +463,3 @@ export default function AllUsersPage() {
     </div>
   );
 }
-

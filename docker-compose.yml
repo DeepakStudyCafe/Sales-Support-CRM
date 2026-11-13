@@ -45,7 +45,7 @@ services:
     container_name: crm_backend
     environment:
       NODE_ENV: development
-      PORT: 5000
+      PORT: 5010
       DB_HOST: sqlserver
       DB_PORT: 1433
       DB_NAME: sales_crm
@@ -60,14 +60,14 @@ services:
       JWT_REFRESH_SECRET: dev-refresh-secret-change-in-production-min32
       JWT_ACCESS_EXPIRES: 15m
       JWT_REFRESH_EXPIRES: 7d
-      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URL: http://localhost:3025
       TIMEZONE: Asia/Kolkata
       BCRYPT_ROUNDS: "12"
       IVR_API_BASE_URL: https://api.ivrsolutions.in
       IVR_API_TOKEN: ""
       IVR_SUBDOMAIN: ""
     ports:
-      - "5000:5000"
+      - "5010:5010"
     volumes:
       - ./backend/src:/app/src
       - ./backend/logs:/app/logs
@@ -87,12 +87,12 @@ services:
       dockerfile: Dockerfile.dev
     container_name: crm_frontend
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:5000/api/v1
-      NEXT_PUBLIC_SOCKET_URL: http://localhost:5000
+      NEXT_PUBLIC_API_URL: http://localhost:5010/api/v1
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:5010
       NEXT_PUBLIC_APP_NAME: SalesCRM Pro
       NEXT_PUBLIC_TIMEZONE: Asia/Kolkata
     ports:
-      - "3000:3000"
+      - "3025:3025"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
