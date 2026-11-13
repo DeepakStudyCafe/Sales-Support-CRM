@@ -31,7 +31,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     const token = Cookies.get('accessToken');
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5010';
+    let socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5010';
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+      socketUrl = `${window.location.protocol}//${window.location.hostname}:5010`;
+    }
 
     const socketInstance = io(socketUrl, {
       auth: { token },

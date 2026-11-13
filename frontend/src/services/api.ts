@@ -1,7 +1,17 @@
 import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
 import Cookies from 'js-cookie'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5010/api/v1'
+const getInitialApiUrl = () => {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname !== 'localhost') {
+      return `${window.location.protocol}//${hostname}:5010/api/v1`;
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://159.65.154.5:5010/api/v1';
+};
+
+const API_BASE_URL = getInitialApiUrl();
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -29,9 +39,15 @@ const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue = []
 }
 
-// Request interceptor: attach Authorization header
+// Request interceptor: attach Authorization header and ensure correct dynamic host
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname !== 'localhost' && (!config.baseURL || config.baseURL.includes('localhost'))) {
+        config.baseURL = `${window.location.protocol}//${hostname}:5010/api/v1`;
+      }
+    }
     const token = Cookies.get('accessToken')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
