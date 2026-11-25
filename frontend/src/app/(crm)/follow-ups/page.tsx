@@ -30,8 +30,11 @@ import {
 import api from '@/services/api';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function FollowUpsPage() {
+  const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.roleName === 'Super Admin';
   const [activeTab, setActiveTab] = useState<'all' | 'today' | 'upcoming' | 'overdue' | 'completed'>('all');
   const [tasks, setTasks] = useState<any[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
@@ -371,12 +374,16 @@ export default function FollowUpsPage() {
             icon: <UserCheck className="h-3.5 w-3.5" />,
             onClick: () => setIsBulkAssignOpen(true),
           },
-          {
-            label: 'Delete Tasks',
-            icon: <Trash2 className="h-3.5 w-3.5 text-rose-400" />,
-            variant: 'destructive',
-            onClick: () => setIsBulkDeleteOpen(true),
-          },
+          ...(isSuperAdmin
+            ? [
+                {
+                  label: 'Delete Tasks',
+                  icon: <Trash2 className="h-3.5 w-3.5 text-rose-400" />,
+                  variant: 'destructive' as const,
+                  onClick: () => setIsBulkDeleteOpen(true),
+                },
+              ]
+            : []),
         ]}
       />
 

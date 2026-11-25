@@ -15,6 +15,7 @@ router.put('/:id', requirePermission('users', 'all', 'edit'), (req, res) => user
 router.patch('/:id/activate', requirePermission('users', 'all', 'edit'), (req, res) => usersController.activate(req, res));
 router.patch('/:id/deactivate', requirePermission('users', 'all', 'edit'), (req, res) => usersController.deactivate(req, res));
 router.post('/:id/reset-password', requirePermission('users', 'all', 'edit'), (req, res) => usersController.resetPassword(req, res));
+router.delete('/:id', requirePermission('users', 'all', 'delete'), (req, res) => usersController.delete(req, res));
 
 export default router;
 

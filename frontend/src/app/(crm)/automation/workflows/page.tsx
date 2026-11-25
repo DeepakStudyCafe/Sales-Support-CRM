@@ -13,8 +13,11 @@ import { formatDate } from '@/lib/utils';
 import { Zap, Plus, Trash2, RefreshCw, Play, CheckCircle } from 'lucide-react';
 import api from '@/services/api';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function WorkflowsPage() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.roleName === 'Super Admin';
   const [rules, setRules] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -161,14 +164,17 @@ export default function WorkflowsPage() {
 
                 <div className="flex items-center justify-between pt-2 border-t text-xs text-muted-foreground">
                   <span>Created {formatDate(rule.created_at)}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-red-500 hover:text-red-700"
-                    onClick={() => handleDelete(rule.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {isSuperAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-red-500 hover:text-red-700"
+                      onClick={() => handleDelete(rule.id)}
+                      title="Delete Rule (Super Admin Only)"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

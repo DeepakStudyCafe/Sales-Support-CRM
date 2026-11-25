@@ -16,6 +16,7 @@ const createUserSchema = z.object({
   ivr_agent_id: z.string().optional(),
   ivr_extension: z.string().optional(),
   password: z.string().min(8).optional(),
+  modules: z.array(z.string()).optional(),
 });
 
 const updateUserSchema = createUserSchema.partial().omit({ email: true });
@@ -98,6 +99,16 @@ export class UsersController {
     try {
       const tempPassword = await userService.resetUserPassword(req.params.id, req.user.userId);
       sendSuccess(res, { temporaryPassword: tempPassword }, 'Password reset successfully');
+    } catch (err) {
+      sendError(res, (err as Error).message, 400);
+    }
+  }
+
+  async delete(req: Request, res: Response): Promise<void> {
+    if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
+    try {
+      await userService.deleteUser(req.params.id, req.user.userId);
+      sendSuccess(res, null, 'User deleted successfully');
     } catch (err) {
       sendError(res, (err as Error).message, 400);
     }

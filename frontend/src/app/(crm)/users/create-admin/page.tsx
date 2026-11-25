@@ -8,7 +8,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Shield, ChevronLeft } from 'lucide-react';
+import { Shield, ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { ModulePermissionSelector } from '@/components/users/ModulePermissionSelector';
 import api from '@/services/api';
 import { toast } from 'sonner';
 
@@ -17,6 +18,17 @@ export default function CreateAdminPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [selectedModules, setSelectedModules] = useState<string[]>([
+    'leads',
+    'opportunities',
+    'customers',
+    'calling',
+    'followups',
+    'tickets',
+    'users',
+    'reports',
+  ]);
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -62,10 +74,11 @@ export default function CreateAdminPage() {
         roleName: 'Admin',
         department_id: formData.department_id || undefined,
         team_id: formData.team_id || undefined,
+        modules: selectedModules,
       });
 
       if (res.data.success) {
-        toast.success('Admin account created successfully');
+        toast.success('Admin account created with configured module permissions');
         router.push('/users');
       }
     } catch (err: any) {
@@ -76,10 +89,10 @@ export default function CreateAdminPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6 max-w-3xl mx-auto pb-16">
       <PageHeader
         title="Create Admin Account"
-        subtitle="Provision a administrative user with supervisory rights over CRM operations"
+        subtitle="Provision an administrative user with customized operational permissions and module access"
         breadcrumbs={[
           { label: 'User Management', href: '/users' },
           { label: 'Create Admin' },
@@ -201,11 +214,21 @@ export default function CreateAdminPage() {
               </div>
             </div>
 
-            <div className="pt-4 flex justify-end gap-3">
+            {/* Interactive Module Permissions */}
+            <div className="pt-2 border-t">
+              <ModulePermissionSelector
+                selectedModules={selectedModules}
+                onChange={setSelectedModules}
+                roleName="Admin"
+              />
+            </div>
+
+            <div className="pt-4 flex justify-end gap-3 border-t">
               <Button type="button" variant="outline" onClick={() => router.push('/users')}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting} className="font-semibold gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
                 {isSubmitting ? 'Creating Admin...' : 'Create Admin User'}
               </Button>
             </div>
@@ -215,4 +238,3 @@ export default function CreateAdminPage() {
     </div>
   );
 }
-

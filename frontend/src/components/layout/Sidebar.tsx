@@ -48,9 +48,9 @@ const menuItems: MenuItem[] = [
     module: 'dashboard',
     children: [
       { title: 'Overview', href: '/dashboard', module: 'dashboard', submodule: 'overview' },
-      { title: 'Sales Dashboard', href: '/dashboard/sales', module: 'dashboard', submodule: 'sales' },
-      { title: 'Calling Dashboard', href: '/dashboard/calling', module: 'dashboard', submodule: 'calling' },
-      { title: 'Support Dashboard', href: '/dashboard/support', module: 'dashboard', submodule: 'support' },
+      { title: 'Sales Dashboard', href: '/dashboard/sales', module: 'leads', submodule: 'sales' },
+      { title: 'Calling Dashboard', href: '/dashboard/calling', module: 'calling', submodule: 'calling' },
+      { title: 'Support Dashboard', href: '/dashboard/support', module: 'tickets', submodule: 'support' },
     ],
   },
   {
@@ -233,14 +233,38 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   };
 
   // Filter modules based on permission
-  const filteredMenuItems = menuItems.filter((item) => {
-    if (!user) return false;
-    if (user.roleName === 'Super Admin') return true;
+  const filteredMenuItems = menuItems
+    .map((item) => {
+      if (!user) return null;
+      if (user.roleName === 'Super Admin') return item;
 
-    // Check module permission
-    if (item.module === 'dashboard' || item.module === 'notifications') return true;
-    return hasPermission(item.module, item.submodule, item.action);
-  });
+      // If item has children, filter its children based on permissions
+      if (item.children && item.children.length > 0) {
+        const permittedChildren = item.children.filter((child) => {
+          if (!child.module) return true;
+          if (child.href === '/dashboard') return true;
+          return hasPermission(child.module, child.submodule, child.action);
+        });
+
+        if (permittedChildren.length === 0) {
+          return null; // Don't show parent group if no submodules are permitted
+        }
+
+        return {
+          ...item,
+          children: permittedChildren,
+        };
+      }
+
+      // If item has no children, check item itself
+      if (item.module === 'dashboard' || item.module === 'notifications') return item;
+      if (hasPermission(item.module, item.submodule, item.action)) {
+        return item;
+      }
+
+      return null;
+    })
+    .filter((item): item is MenuItem => item !== null);
 
   return (
     <>
@@ -329,13 +353,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {/* Submenu items */}
                 {hasChildren && isExpanded && (
                   <div className="ml-4 mt-1 pl-3 border-l border-border/60 space-y-0.5">
-                    {item.children
-                      ?.filter((child) => {
-                        if (!user || user.roleName === 'Super Admin') return true;
-                        if (!child.module) return true;
-                        return hasPermission(child.module, child.submodule, child.action);
-                      })
-                      .map((child) => {
+                    {item.children?.map((child) => {
                         const isActive = pathname === child.href;
                         return (
                           <Link

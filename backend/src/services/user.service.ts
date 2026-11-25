@@ -19,6 +19,7 @@ export interface CreateUserDTO {
   ivr_extension?: string;
   password?: string; // If not provided, generates a temporary one
   createdBy: string;
+  modules?: string[];
 }
 
 export class UserService {
@@ -53,6 +54,33 @@ export class UserService {
 
     const user = await userRepository.createUser(userInput);
 
+    // Apply strict module permissions
+    try {
+      const allowedModules = input.modules && input.modules.length > 0
+        ? input.modules
+        : input.roleName === 'Sales'
+          ? ['leads', 'opportunities', 'quotations', 'customers', 'calling', 'followups', 'reports', 'dashboard', 'notifications']
+          : input.roleName === 'Support'
+            ? ['tickets', 'customers', 'calling', 'followups', 'reports', 'dashboard', 'notifications']
+            : ['leads', 'opportunities', 'quotations', 'customers', 'calling', 'followups', 'tickets', 'reports', 'dashboard', 'users', 'notifications'];
+
+      const allPerms = await roleRepository.getAllPermissions();
+      for (const p of allPerms) {
+        // STRICT RULE: Non-superadmin users can NEVER delete data
+        const isGranted = allowedModules.includes(p.module) && p.action !== 'delete';
+        await roleRepository.setUserPermissionOverride(
+          user.id,
+          p.id,
+          isGranted,
+          input.createdBy,
+          `Configured for ${input.roleName} role`
+        );
+      }
+      await authService.clearPermissionCache(user.id);
+    } catch (permErr: any) {
+      logger.warn('Failed to set initial user module permissions', { userId: user.id, error: permErr.message });
+    }
+
     await auditService.log({
       userId: input.createdBy,
       action: 'CREATE_USER',
@@ -61,7 +89,7 @@ export class UserService {
       newValues: { email: user.email, role: input.roleName },
     });
 
-    logger.info('User created', { userId: user.id, email: user.email, role: input.roleName });
+    logger.info('User created with configured permissions', { userId: user.id, email: user.email, role: input.roleName });
 
     return {
       user: { ...userInput },
@@ -164,6 +192,22 @@ export class UserService {
     // Don't return password hash
     const { password_hash, ...safeUser } = user;
     return safeUser;
+  }
+
+  async deleteUser(id: string, performedBy: string): Promise<void> {
+    const user = await userRepository.findByIdWithRole(id);
+    if (!user) throw new Error('User not found');
+    await userRepository.softDelete(id);
+    await userRepository.deleteAllUserSessions(id);
+    await authService.clearPermissionCache(id);
+    await auditService.log({
+      userId: performedBy,
+      action: 'DELETE_USER',
+      entityType: 'user',
+      entityId: id,
+      oldValues: { email: user.email, role: user.role_name },
+    });
+    logger.info('User soft deleted', { userId: id, performedBy });
   }
 }
 

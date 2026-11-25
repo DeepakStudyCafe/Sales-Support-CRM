@@ -17,9 +17,12 @@ const campaignSchema = z.object({
   maxConcurrentCalls: z.number().int().min(1).max(50).default(1),
   maxAttempts: z.number().int().min(1).max(10).default(3),
   retryIntervalMinutes: z.number().int().min(5).max(1440).default(60),
-  startTime: z.string().datetime().optional(),
-  endTime: z.string().datetime().optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
   assignedTo: z.string().uuid().optional(),
+  assignedAgents: z.array(z.string().uuid()).optional(),
+  leadIds: z.array(z.string().uuid()).optional(),
+  pacingIntervalSeconds: z.number().int().min(5).max(300).default(30),
 });
 
 const addContactsSchema = z.object({
@@ -82,7 +85,7 @@ router.get('/', requirePermission('calling', 'campaigns', 'view'), async (req: R
   });
 });
 
-// Create campaign
+// Create campaign with assigned agents and leads
 router.post('/', requirePermission('calling', 'campaigns', 'create'), async (req: Request, res: Response) => {
   if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
   const parsed = campaignSchema.safeParse(req.body);
@@ -92,10 +95,23 @@ router.post('/', requirePermission('calling', 'campaigns', 'create'), async (req
   }
 
   const pool = getPool();
+  const assignedAgentsList = parsed.data.assignedAgents && parsed.data.assignedAgents.length > 0
+    ? parsed.data.assignedAgents
+    : parsed.data.assignedTo
+      ? [parsed.data.assignedTo]
+      : [req.user.userId];
+
+  const primaryAssignee = assignedAgentsList[0] || req.user.userId;
+  const metadataStr = JSON.stringify({
+    assignedAgents: assignedAgentsList,
+    pacingIntervalSeconds: parsed.data.pacingIntervalSeconds || 30,
+    purpose: parsed.data.purpose || '',
+  });
+
   const result = await pool.request()
     .input('name', sql.NVarChar, parsed.data.name)
     .input('dialer_mode', sql.NVarChar, parsed.data.dialerMode)
-    .input('purpose', sql.NVarChar, parsed.data.purpose ?? null)
+    .input('purpose', sql.NVarChar, metadataStr)
     .input('calling_window_start', sql.NVarChar, parsed.data.callingWindowStart)
     .input('calling_window_end', sql.NVarChar, parsed.data.callingWindowEnd)
     .input('max_concurrent_calls', sql.Int, parsed.data.maxConcurrentCalls)
@@ -103,7 +119,7 @@ router.post('/', requirePermission('calling', 'campaigns', 'create'), async (req
     .input('retry_interval_minutes', sql.Int, parsed.data.retryIntervalMinutes)
     .input('start_time', sql.DateTime2, parsed.data.startTime ? new Date(parsed.data.startTime) : null)
     .input('end_time', sql.DateTime2, parsed.data.endTime ? new Date(parsed.data.endTime) : null)
-    .input('assigned_to', sql.UniqueIdentifier, parsed.data.assignedTo ?? req.user.userId)
+    .input('assigned_to', sql.UniqueIdentifier, primaryAssignee)
     .input('created_by', sql.UniqueIdentifier, req.user.userId)
     .query<{ id: string }>(`
       INSERT INTO call_campaigns (name, dialer_mode, purpose, calling_window_start, calling_window_end, max_concurrent_calls, max_attempts, retry_interval_minutes, start_time, end_time, assigned_to, created_by)
@@ -111,10 +127,43 @@ router.post('/', requirePermission('calling', 'campaigns', 'create'), async (req
       VALUES (@name, @dialer_mode, @purpose, @calling_window_start, @calling_window_end, @max_concurrent_calls, @max_attempts, @retry_interval_minutes, @start_time, @end_time, @assigned_to, @created_by)
     `);
 
-  sendSuccess(res, { id: result.recordset[0].id }, 'Campaign created', 201);
+  const campaignId = result.recordset[0].id;
+
+  // If leads were provided, distribute them across assigned agents in round-robin fashion
+  if (parsed.data.leadIds && parsed.data.leadIds.length > 0) {
+    for (let i = 0; i < parsed.data.leadIds.length; i++) {
+      const leadId = parsed.data.leadIds[i];
+      const targetAgentId = assignedAgentsList[i % assignedAgentsList.length];
+
+      const leadRes = await pool.request()
+        .input('id', sql.UniqueIdentifier, leadId)
+        .query<{ phone: string }>(`SELECT phone FROM leads WHERE id = @id`);
+
+      if (leadRes.recordset[0]?.phone) {
+        // Reassign lead to the selected agent
+        await pool.request()
+          .input('leadId', sql.UniqueIdentifier, leadId)
+          .input('agentId', sql.UniqueIdentifier, targetAgentId)
+          .query(`UPDATE leads SET assigned_to = @agentId, updated_at = GETUTCDATE() WHERE id = @leadId`);
+
+        // Insert into campaign_contacts
+        await pool.request()
+          .input('campaignId', sql.UniqueIdentifier, campaignId)
+          .input('leadId', sql.UniqueIdentifier, leadId)
+          .input('phone', sql.NVarChar, leadRes.recordset[0].phone)
+          .query(`
+            IF NOT EXISTS (SELECT 1 FROM campaign_contacts WHERE campaign_id = @campaignId AND lead_id = @leadId)
+            INSERT INTO campaign_contacts (campaign_id, lead_id, phone, status)
+            VALUES (@campaignId, @leadId, @phone, 'Pending')
+          `);
+      }
+    }
+  }
+
+  sendSuccess(res, { id: campaignId }, 'Campaign created successfully with agent allocations', 201);
 });
 
-// Get campaign by ID with metrics
+// Get campaign by ID with metrics and assigned agent details
 router.get('/:id', requirePermission('calling', 'campaigns', 'view'), async (req: Request, res: Response) => {
   const pool = getPool();
   const campaignResult = await pool.request()
@@ -148,10 +197,136 @@ router.get('/:id', requirePermission('calling', 'campaigns', 'view'), async (req
       FROM campaign_contacts WHERE campaign_id = @id
     `);
 
+  let parsedMetadata: any = {};
+  try {
+    parsedMetadata = JSON.parse(campaignResult.recordset[0].purpose || '{}');
+  } catch {
+    parsedMetadata = { purpose: campaignResult.recordset[0].purpose };
+  }
+
   sendSuccess(res, {
     ...campaignResult.recordset[0],
+    metadata: parsedMetadata,
     metrics: metrics.recordset[0] ?? {},
   });
+});
+
+// Get all contacts in campaign with assigned agent info
+router.get('/:id/contacts', requirePermission('calling', 'campaigns', 'view'), async (req: Request, res: Response) => {
+  const pool = getPool();
+  const contacts = await pool.request()
+    .input('campaignId', sql.UniqueIdentifier, req.params.id)
+    .query(`
+      SELECT cc.*,
+        l.first_name, l.last_name, l.company, l.status as lead_status, l.priority,
+        CONCAT(u.first_name, ' ', u.last_name) as assigned_agent_name,
+        u.email as assigned_agent_email
+      FROM campaign_contacts cc
+      LEFT JOIN leads l ON cc.lead_id = l.id
+      LEFT JOIN users u ON l.assigned_to = u.id
+      WHERE cc.campaign_id = @campaignId
+      ORDER BY cc.created_at ASC
+    `);
+  sendSuccess(res, contacts.recordset);
+});
+
+// Get per-agent progress breakdown in campaign
+router.get('/:id/agent-progress', requirePermission('calling', 'campaigns', 'view'), async (req: Request, res: Response) => {
+  const pool = getPool();
+  const progress = await pool.request()
+    .input('campaignId', sql.UniqueIdentifier, req.params.id)
+    .query(`
+      SELECT
+        u.id as user_id,
+        CONCAT(u.first_name, ' ', u.last_name) as agent_name,
+        r.name as role_name,
+        COUNT(cc.id) as assigned_leads,
+        SUM(CASE WHEN cc.status = 'Completed' OR cc.status = 'Answered' THEN 1 ELSE 0 END) as calls_completed,
+        SUM(CASE WHEN l.status = 'Interested' THEN 1 ELSE 0 END) as interested_count,
+        SUM(CASE WHEN l.status = 'Converted' THEN 1 ELSE 0 END) as converted_count,
+        SUM(CASE WHEN cc.status = 'Pending' THEN 1 ELSE 0 END) as pending_calls
+      FROM campaign_contacts cc
+      JOIN leads l ON cc.lead_id = l.id
+      JOIN users u ON l.assigned_to = u.id
+      JOIN roles r ON u.role_id = r.id
+      WHERE cc.campaign_id = @campaignId
+      GROUP BY u.id, u.first_name, u.last_name, r.name
+    `);
+  sendSuccess(res, progress.recordset);
+});
+
+// Progressive dialer: Fetch next lead in active campaign for the logged-in agent
+router.get('/active-feed/my-next', requirePermission('calling', 'click-to-call', 'view'), async (req: Request, res: Response) => {
+  if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
+  const pool = getPool();
+  const nextLead = await pool.request()
+    .input('userId', sql.UniqueIdentifier, req.user.userId)
+    .query(`
+      SELECT TOP 1
+        cc.id as contact_id,
+        cc.campaign_id,
+        cc.phone,
+        cc.status as call_status,
+        c.name as campaign_name,
+        c.purpose,
+        l.id as lead_id,
+        l.first_name,
+        l.last_name,
+        l.company,
+        l.email,
+        l.status as lead_status,
+        l.priority,
+        l.value
+      FROM campaign_contacts cc
+      JOIN call_campaigns c ON cc.campaign_id = c.id
+      JOIN leads l ON cc.lead_id = l.id
+      WHERE l.assigned_to = @userId
+        AND c.status = 'Active'
+        AND cc.status = 'Pending'
+        AND l.deleted_at IS NULL
+      ORDER BY cc.created_at ASC
+    `);
+
+  sendSuccess(res, nextLead.recordset[0] ?? null);
+});
+
+// Progressive dialer: Record outcome and advance lead
+router.post('/active-feed/outcome', requirePermission('calling', 'click-to-call', 'edit'), async (req: Request, res: Response) => {
+  if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
+  const { contactId, leadId, callOutcome, leadStatus, notes, followUpDate } = req.body;
+  const pool = getPool();
+
+  if (contactId) {
+    await pool.request()
+      .input('contactId', sql.UniqueIdentifier, contactId)
+      .input('outcome', sql.NVarChar, callOutcome || 'Completed')
+      .query(`
+        UPDATE campaign_contacts
+        SET status = 'Completed', last_outcome = @outcome, last_attempt_at = GETUTCDATE(), attempts = attempts + 1, updated_at = GETUTCDATE()
+        WHERE id = @contactId
+      `);
+  }
+
+  if (leadId && leadStatus) {
+    await pool.request()
+      .input('leadId', sql.UniqueIdentifier, leadId)
+      .input('status', sql.NVarChar, leadStatus)
+      .query(`UPDATE leads SET status = @status, updated_at = GETUTCDATE() WHERE id = @leadId`);
+  }
+
+  if (followUpDate && leadId) {
+    await pool.request()
+      .input('leadId', sql.UniqueIdentifier, leadId)
+      .input('assignedTo', sql.UniqueIdentifier, req.user.userId)
+      .input('dueAt', sql.DateTime2, new Date(followUpDate))
+      .input('notes', sql.NVarChar, notes || 'Auto-assignment follow-up')
+      .query(`
+        INSERT INTO follow_ups (lead_id, assigned_to, due_at, type, status, notes)
+        VALUES (@leadId, @assignedTo, @dueAt, 'Call', 'Pending', @notes)
+      `);
+  }
+
+  sendSuccess(res, { success: true }, 'Outcome recorded and advanced to next lead');
 });
 
 // Add contacts to campaign

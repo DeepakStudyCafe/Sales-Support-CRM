@@ -114,6 +114,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Super Admin has unrestricted access everywhere
     if (user.roleName === 'Super Admin') return true;
 
+    // Strict security rule: non-superadmins NEVER have 'delete' action
+    if (action === 'delete') return false;
+
     return permissions.some((p) => {
       const matchModule = p.module === module || p.module === '*';
       const matchSub = !submodule || p.submodule === submodule || p.submodule === 'all' || !p.submodule;

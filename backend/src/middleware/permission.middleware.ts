@@ -74,7 +74,19 @@ export function requirePermission(module: string, submodule: string, action: str
       return;
     }
 
-    // Super Admin bypasses all permission checks
+    // STRICT BUSINESS RULE: Only Super Admin can delete records
+    if (action === 'delete' && req.user.roleName !== 'Super Admin') {
+      logger.warn('Delete permission denied: strictly reserved for Super Admin', {
+        userId: req.user.userId,
+        roleName: req.user.roleName,
+        module,
+        submodule,
+      });
+      sendError(res, 'Access denied: Only Super Admin has permission to delete records.', 403);
+      return;
+    }
+
+    // Super Admin bypasses all other permission checks
     if (req.user.roleName === 'Super Admin') {
       next();
       return;

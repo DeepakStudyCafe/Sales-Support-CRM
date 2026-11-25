@@ -8,7 +8,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Headphones, PhoneCall, ChevronLeft } from 'lucide-react';
+import { Headphones, ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { ModulePermissionSelector } from '@/components/users/ModulePermissionSelector';
 import api from '@/services/api';
 import { toast } from 'sonner';
 
@@ -17,6 +18,14 @@ export default function CreateSupportUserPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [selectedModules, setSelectedModules] = useState<string[]>([
+    'tickets',
+    'customers',
+    'calling',
+    'followups',
+    'reports',
+  ]);
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -66,10 +75,11 @@ export default function CreateSupportUserPage() {
         team_id: formData.team_id || undefined,
         ivr_extension: formData.ivr_extension || undefined,
         ivr_agent_id: formData.ivr_agent_id || undefined,
+        modules: selectedModules,
       });
 
       if (res.data.success) {
-        toast.success('Support Executive account created successfully');
+        toast.success('Support Executive account created with customized permissions');
         router.push('/users');
       }
     } catch (err: any) {
@@ -80,7 +90,7 @@ export default function CreateSupportUserPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6 max-w-3xl mx-auto pb-16">
       <PageHeader
         title="Create Support Executive Account"
         subtitle="Provision an employee account with customer ticket queues, SLAs, and inbound call routing"
@@ -99,7 +109,7 @@ export default function CreateSupportUserPage() {
         <CardHeader className="pb-4 border-b">
           <CardTitle className="text-base flex items-center gap-2">
             <Headphones className="h-4 w-4 text-primary" />
-            Support Representative Information
+            Support Executive Information
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
@@ -111,7 +121,7 @@ export default function CreateSupportUserPage() {
                   id="first_name"
                   value={formData.first_name}
                   onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                  placeholder="e.g. Priya"
+                  placeholder="e.g. Pooja"
                   required
                 />
               </div>
@@ -122,7 +132,7 @@ export default function CreateSupportUserPage() {
                   id="last_name"
                   value={formData.last_name}
                   onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                  placeholder="e.g. Nair"
+                  placeholder="e.g. Verma"
                   required
                 />
               </div>
@@ -130,13 +140,13 @@ export default function CreateSupportUserPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="email">Work Email *</Label>
+                <Label htmlFor="email">Email Address *</Label>
                 <Input
                   id="email"
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="priya.nair@company.com"
+                  placeholder="pooja.verma@company.com"
                   required
                 />
               </div>
@@ -147,7 +157,7 @@ export default function CreateSupportUserPage() {
                   id="phone"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+91 98765 99887"
+                  placeholder="+91 98765 43210"
                 />
               </div>
             </div>
@@ -162,39 +172,7 @@ export default function CreateSupportUserPage() {
                 placeholder="Min 8 characters (e.g. Support@123)"
                 required
               />
-            </div>
-
-            {/* Inbound Call & IVR mapping */}
-            <div className="p-4 rounded-lg bg-muted/40 border space-y-4">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <PhoneCall className="h-4 w-4 text-primary" />
-                Inbound Telephony & Support Extension
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Configures employee extension for IVR Solutions incoming support queue routing.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="ivr_extension">Inbound Extension</Label>
-                  <Input
-                    id="ivr_extension"
-                    value={formData.ivr_extension}
-                    onChange={(e) => setFormData({ ...formData, ivr_extension: e.target.value })}
-                    placeholder="e.g. 201, 8002"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="ivr_agent_id">Support Agent Tag</Label>
-                  <Input
-                    id="ivr_agent_id"
-                    value={formData.ivr_agent_id}
-                    onChange={(e) => setFormData({ ...formData, ivr_agent_id: e.target.value })}
-                    placeholder="e.g. SUP-201"
-                  />
-                </div>
-              </div>
+              <p className="text-xs text-muted-foreground">The employee can change their password anytime after first login.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t">
@@ -237,12 +215,44 @@ export default function CreateSupportUserPage() {
               </div>
             </div>
 
-            <div className="pt-4 flex justify-end gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t">
+              <div className="space-y-1.5">
+                <Label htmlFor="ivr_extension">Cloud Telephony Extension</Label>
+                <Input
+                  id="ivr_extension"
+                  value={formData.ivr_extension}
+                  onChange={(e) => setFormData({ ...formData, ivr_extension: e.target.value })}
+                  placeholder="e.g. 201"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="ivr_agent_id">IVR Agent ID</Label>
+                <Input
+                  id="ivr_agent_id"
+                  value={formData.ivr_agent_id}
+                  onChange={(e) => setFormData({ ...formData, ivr_agent_id: e.target.value })}
+                  placeholder="e.g. AGENT_SUPPORT_01"
+                />
+              </div>
+            </div>
+
+            {/* Interactive Module Permissions */}
+            <div className="pt-2 border-t">
+              <ModulePermissionSelector
+                selectedModules={selectedModules}
+                onChange={setSelectedModules}
+                roleName="Support"
+              />
+            </div>
+
+            <div className="pt-4 flex justify-end gap-3 border-t">
               <Button type="button" variant="outline" onClick={() => router.push('/users')}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Creating Support User...' : 'Create Support Account'}
+              <Button type="submit" disabled={isSubmitting} className="font-semibold gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                {isSubmitting ? 'Creating Support User...' : 'Create Support User'}
               </Button>
             </div>
           </form>
@@ -251,4 +261,3 @@ export default function CreateSupportUserPage() {
     </div>
   );
 }
-

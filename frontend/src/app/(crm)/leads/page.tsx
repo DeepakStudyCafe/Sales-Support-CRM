@@ -37,8 +37,11 @@ import {
 import Link from 'next/link';
 import { toast } from 'sonner';
 import api from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function LeadsPage() {
+  const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.roleName === 'Super Admin';
   const [activeTab, setActiveTab] = useState<'all' | 'pipeline' | 'assignment' | 'sources' | 'lost'>('all');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
@@ -328,15 +331,17 @@ export default function LeadsPage() {
             </Button>
           )}
 
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setDeleteId(lead.id)}
-            title="Delete Lead"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {isSuperAdmin && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setDeleteId(lead.id)}
+              title="Delete Lead (Admin Only)"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -459,12 +464,16 @@ export default function LeadsPage() {
             icon: <CheckCircle2 className="h-3.5 w-3.5" />,
             onClick: () => setIsBulkStatusOpen(true),
           },
-          {
-            label: 'Delete Selected',
-            icon: <Trash2 className="h-3.5 w-3.5 text-rose-400" />,
-            variant: 'destructive',
-            onClick: () => setIsBulkDeleteOpen(true),
-          },
+          ...(isSuperAdmin
+            ? [
+                {
+                  label: 'Delete Selected',
+                  icon: <Trash2 className="h-3.5 w-3.5 text-rose-400" />,
+                  variant: 'destructive' as const,
+                  onClick: () => setIsBulkDeleteOpen(true),
+                },
+              ]
+            : []),
         ]}
         filterSlot={
           <div className="flex items-center gap-2">

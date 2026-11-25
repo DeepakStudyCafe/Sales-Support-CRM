@@ -8,7 +8,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PhoneCall, TrendingUp, ChevronLeft } from 'lucide-react';
+import { TrendingUp, ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { ModulePermissionSelector } from '@/components/users/ModulePermissionSelector';
 import api from '@/services/api';
 import { toast } from 'sonner';
 
@@ -17,6 +18,15 @@ export default function CreateSalesUserPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [selectedModules, setSelectedModules] = useState<string[]>([
+    'leads',
+    'opportunities',
+    'customers',
+    'calling',
+    'followups',
+    'reports',
+  ]);
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -66,10 +76,11 @@ export default function CreateSalesUserPage() {
         team_id: formData.team_id || undefined,
         ivr_extension: formData.ivr_extension || undefined,
         ivr_agent_id: formData.ivr_agent_id || undefined,
+        modules: selectedModules,
       });
 
       if (res.data.success) {
-        toast.success('Sales Executive account created successfully');
+        toast.success('Sales Executive account created with customized permissions');
         router.push('/users');
       }
     } catch (err: any) {
@@ -80,10 +91,10 @@ export default function CreateSalesUserPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6 max-w-3xl mx-auto pb-16">
       <PageHeader
         title="Create Sales Executive Account"
-        subtitle="Provision an employee account with sales pipelines, leads, and telephony access"
+        subtitle="Provision an employee account with sales pipelines, telephony access, and customized modules"
         breadcrumbs={[
           { label: 'User Management', href: '/users' },
           { label: 'Create Sales User' },
@@ -111,7 +122,7 @@ export default function CreateSalesUserPage() {
                   id="first_name"
                   value={formData.first_name}
                   onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                  placeholder="e.g. Amit"
+                  placeholder="e.g. Rahul"
                   required
                 />
               </div>
@@ -130,13 +141,13 @@ export default function CreateSalesUserPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="email">Work Email *</Label>
+                <Label htmlFor="email">Email Address *</Label>
                 <Input
                   id="email"
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="amit.sharma@company.com"
+                  placeholder="rahul.sharma@company.com"
                   required
                 />
               </div>
@@ -147,7 +158,7 @@ export default function CreateSalesUserPage() {
                   id="phone"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+91 98765 12345"
+                  placeholder="+91 98765 43210"
                 />
               </div>
             </div>
@@ -162,39 +173,7 @@ export default function CreateSalesUserPage() {
                 placeholder="Min 8 characters (e.g. Sales@123)"
                 required
               />
-            </div>
-
-            {/* IVR Integration mapping */}
-            <div className="p-4 rounded-lg bg-muted/40 border space-y-4">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <PhoneCall className="h-4 w-4 text-primary" />
-                Telephony & IVR Configuration
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Required for Click-to-Call (`/api/c2c_get`) and outbound campaign dialer routing.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="ivr_extension">IVR Extension Number</Label>
-                  <Input
-                    id="ivr_extension"
-                    value={formData.ivr_extension}
-                    onChange={(e) => setFormData({ ...formData, ivr_extension: e.target.value })}
-                    placeholder="e.g. 101, 8001"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="ivr_agent_id">IVR Agent ID</Label>
-                  <Input
-                    id="ivr_agent_id"
-                    value={formData.ivr_agent_id}
-                    onChange={(e) => setFormData({ ...formData, ivr_agent_id: e.target.value })}
-                    placeholder="e.g. AGENT-101"
-                  />
-                </div>
-              </div>
+              <p className="text-xs text-muted-foreground">The employee can change their password anytime after first login.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t">
@@ -237,12 +216,44 @@ export default function CreateSalesUserPage() {
               </div>
             </div>
 
-            <div className="pt-4 flex justify-end gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t">
+              <div className="space-y-1.5">
+                <Label htmlFor="ivr_extension">Cloud Telephony Extension</Label>
+                <Input
+                  id="ivr_extension"
+                  value={formData.ivr_extension}
+                  onChange={(e) => setFormData({ ...formData, ivr_extension: e.target.value })}
+                  placeholder="e.g. 101"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="ivr_agent_id">IVR Agent ID</Label>
+                <Input
+                  id="ivr_agent_id"
+                  value={formData.ivr_agent_id}
+                  onChange={(e) => setFormData({ ...formData, ivr_agent_id: e.target.value })}
+                  placeholder="e.g. AGENT_01"
+                />
+              </div>
+            </div>
+
+            {/* Interactive Module Permissions */}
+            <div className="pt-2 border-t">
+              <ModulePermissionSelector
+                selectedModules={selectedModules}
+                onChange={setSelectedModules}
+                roleName="Sales"
+              />
+            </div>
+
+            <div className="pt-4 flex justify-end gap-3 border-t">
               <Button type="button" variant="outline" onClick={() => router.push('/users')}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Creating Sales User...' : 'Create Sales Account'}
+              <Button type="submit" disabled={isSubmitting} className="font-semibold gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                {isSubmitting ? 'Creating Sales User...' : 'Create Sales User'}
               </Button>
             </div>
           </form>
@@ -251,4 +262,3 @@ export default function CreateSalesUserPage() {
     </div>
   );
 }
-

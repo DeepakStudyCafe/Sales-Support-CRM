@@ -218,27 +218,33 @@ export class UserRepository extends BaseRepository {
     const pool = getPool();
     const offset = (options.page - 1) * options.limit;
     const request = pool.request();
+    const countRequest = pool.request();
     const where: string[] = ['u.deleted_at IS NULL'];
 
     if (options.search) {
       where.push(`(u.first_name LIKE @search OR u.last_name LIKE @search OR u.email LIKE @search OR u.phone LIKE @search)`);
       request.input('search', sql.NVarChar, `%${options.search}%`);
+      countRequest.input('search', sql.NVarChar, `%${options.search}%`);
     }
     if (options.roleId) {
       where.push('u.role_id = @role_id');
       request.input('role_id', sql.UniqueIdentifier, options.roleId);
+      countRequest.input('role_id', sql.UniqueIdentifier, options.roleId);
     }
     if (options.isActive !== undefined) {
       where.push('u.is_active = @is_active');
       request.input('is_active', sql.Bit, options.isActive ? 1 : 0);
+      countRequest.input('is_active', sql.Bit, options.isActive ? 1 : 0);
     }
     if (options.teamId) {
       where.push('u.team_id = @team_id');
       request.input('team_id', sql.UniqueIdentifier, options.teamId);
+      countRequest.input('team_id', sql.UniqueIdentifier, options.teamId);
     }
     if (options.departmentId) {
       where.push('u.department_id = @department_id');
       request.input('department_id', sql.UniqueIdentifier, options.departmentId);
+      countRequest.input('department_id', sql.UniqueIdentifier, options.departmentId);
     }
 
     const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
@@ -246,7 +252,7 @@ export class UserRepository extends BaseRepository {
     request.input('limit', sql.Int, options.limit);
     request.input('offset', sql.Int, offset);
 
-    const countResult = await pool.request().query<{ total: number }>(
+    const countResult = await countRequest.query<{ total: number }>(
       `SELECT COUNT(1) as total FROM users u ${whereClause}`
     );
 

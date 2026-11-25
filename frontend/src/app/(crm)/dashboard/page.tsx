@@ -43,6 +43,8 @@ import {
 import Link from 'next/link';
 import { ExcelImportModal } from '@/components/shared/ExcelImportModal';
 import { ExcelExportButton } from '@/components/shared/ExcelExportButton';
+import { ProgressiveDialerWidget } from '@/components/calling/ProgressiveDialerWidget';
+import { AgentLeadTrackingHub } from '@/components/dashboard/AgentLeadTrackingHub';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -239,6 +241,9 @@ export default function OverviewDashboardPage() {
         </div>
       </div>
 
+      {/* Live Progressive Dialer Lead Feed for Calling / Sales / Support Agents */}
+      <ProgressiveDialerWidget className="mb-6" />
+
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
@@ -433,6 +438,9 @@ export default function OverviewDashboardPage() {
           </div>
         </ChartCard>
       </div>
+
+      {/* Super Admin / Admin Executive Lead & Employee Status Hub */}
+      <AgentLeadTrackingHub className="mb-6" />
 
       {/* Quick Action Shortcuts */}
       <div className="rounded-xl border bg-card p-6 shadow-sm">

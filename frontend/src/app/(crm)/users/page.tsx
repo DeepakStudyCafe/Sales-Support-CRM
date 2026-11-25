@@ -25,14 +25,21 @@ import {
   FolderTree,
   ShieldAlert,
   History,
+  Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AllUsersPage() {
+  const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.roleName === 'Super Admin';
   const [activeTab, setActiveTab] = useState<'all' | 'teams' | 'roles' | 'history'>('all');
   const [users, setUsers] = useState<any[]>([]);
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [deleteUserName, setDeleteUserName] = useState<string>('');
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
     limit: 10,
@@ -145,6 +152,21 @@ export default function AllUsersPage() {
       toast.error('Failed to reset password');
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteUserId) return;
+    setIsDeletingUser(true);
+    try {
+      const res = await api.delete(`/users/${deleteUserId}`);
+      toast.success(res.data?.message || 'User deleted successfully');
+      setDeleteUserId(null);
+      fetchUsers();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete user');
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -272,6 +294,17 @@ export default function AllUsersPage() {
                   </>
                 )}
               </DropdownMenuItem>
+              {isSuperAdmin && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    setDeleteUserId(row.id);
+                    setDeleteUserName(`${row.first_name} ${row.last_name}`);
+                  }}
+                  className="gap-2 cursor-pointer text-red-600 focus:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" /> Delete User
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -458,6 +491,41 @@ export default function AllUsersPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Confirmation Dialog (Super Admin Only) */}
+      <Dialog open={!!deleteUserId} onOpenChange={(open) => !open && setDeleteUserId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Delete User Account
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs text-muted-foreground">
+            <p>
+              Are you sure you want to permanently delete the account for{' '}
+              <strong className="text-foreground">{deleteUserName}</strong>?
+            </p>
+            <p className="rounded bg-rose-50 dark:bg-rose-950/40 p-2.5 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+              This action cannot be undone. All assigned leads and permissions should be transferred beforehand.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteUserId(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleDeleteUser}
+              isLoading={isDeletingUser}
+              className="font-semibold"
+            >
+              Confirm Delete
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
