@@ -15,9 +15,19 @@ export function createApp(): Express {
     contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
   }));
 
-  // CORS
+  // CORS - Environment-driven origins without hardcoded URLs
+  const allowedOrigins = [
+    env.FRONTEND_URL,
+    ...(env.CORS_ALLOWED_ORIGINS ? env.CORS_ALLOWED_ORIGINS.split(',').map((s) => s.trim()) : []),
+  ].filter(Boolean);
+
   app.use(cors({
-    origin: [env.FRONTEND_URL, 'http://159.65.154.5:3025', 'http://159.65.154.5', 'http://localhost:3025', 'http://localhost:3000'],
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || env.NODE_ENV !== 'production') {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS policy violation for origin: ${origin}`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

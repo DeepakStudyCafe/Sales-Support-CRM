@@ -7,9 +7,19 @@ import { env } from '../config/environment';
 let io: SocketIOServer | null = null;
 
 export async function initializeSocketServer(httpServer: HTTPServer): Promise<SocketIOServer> {
+  const allowedOrigins = [
+    env.FRONTEND_URL,
+    ...(env.CORS_ALLOWED_ORIGINS ? env.CORS_ALLOWED_ORIGINS.split(',').map((s) => s.trim()) : []),
+  ].filter(Boolean);
+
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: [env.FRONTEND_URL, 'http://159.65.154.5:3025', 'http://159.65.154.5', 'http://localhost:3025', 'http://localhost:3000'],
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin) || env.NODE_ENV !== 'production') {
+          return callback(null, true);
+        }
+        return callback(null, false);
+      },
       methods: ['GET', 'POST'],
       credentials: true,
     },

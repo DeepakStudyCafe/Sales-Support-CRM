@@ -7,6 +7,7 @@ const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().transform(Number).default('5010'),
   FRONTEND_URL: z.string().url().default('http://localhost:3025'),
+  CORS_ALLOWED_ORIGINS: z.string().optional().default(''),
 
   // SQL Server
   DB_HOST: z.string().min(1, 'DB_HOST is required'),

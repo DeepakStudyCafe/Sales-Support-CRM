@@ -2,13 +2,18 @@ import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } fro
 import Cookies from 'js-cookie'
 
 const getInitialApiUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-    if (hostname !== 'localhost') {
+    const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+    if (isIp) {
       return `${window.location.protocol}//${hostname}:5010/api/v1`;
     }
+    return `${window.location.protocol}//${hostname}/api/v1`;
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://159.65.154.5:5010/api/v1';
+  return 'http://localhost:5010/api/v1';
 };
 
 const API_BASE_URL = getInitialApiUrl();
@@ -42,11 +47,8 @@ const processQueue = (error: unknown, token: string | null = null) => {
 // Request interceptor: attach Authorization header and ensure correct dynamic host
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      if (hostname !== 'localhost' && (!config.baseURL || config.baseURL.includes('localhost'))) {
-        config.baseURL = `${window.location.protocol}//${hostname}:5010/api/v1`;
-      }
+    if (!config.baseURL) {
+      config.baseURL = API_BASE_URL;
     }
     const token = Cookies.get('accessToken')
     if (token && config.headers) {

@@ -27,8 +27,8 @@ export default function CallingSettingsPage() {
   });
 
   const webhookUrl = typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:5010/api/v1/calls/webhook`
-    : 'http://localhost:5010/api/v1/calls/webhook';
+    ? `${process.env.NEXT_PUBLIC_API_URL || `${window.location.protocol}//${window.location.hostname}/api/v1`}/calls/webhook`
+    : 'https://crm.automationcafe.in/api/v1/calls/webhook';
 
   useEffect(() => {
     async function loadSettings() {

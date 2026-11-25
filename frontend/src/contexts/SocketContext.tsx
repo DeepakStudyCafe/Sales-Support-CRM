@@ -31,9 +31,18 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     const token = Cookies.get('accessToken');
-    let socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5010';
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-      socketUrl = `${window.location.protocol}//${window.location.hostname}:5010`;
+    let socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+    if (!socketUrl && typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+      if (isIp) {
+        socketUrl = `${window.location.protocol}//${hostname}:5010`;
+      } else {
+        socketUrl = `${window.location.protocol}//${hostname}`;
+      }
+    }
+    if (!socketUrl) {
+      socketUrl = 'http://localhost:5010';
     }
 
     const socketInstance = io(socketUrl, {

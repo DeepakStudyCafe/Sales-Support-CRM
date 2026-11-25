@@ -108,7 +108,7 @@ export default function IVRSettingsPage() {
                 Configure this URL in your IVR Solutions portal under Webhook / Event notifications:
               </p>
               <code className="block p-2 rounded bg-background border font-mono text-xs text-foreground select-all mt-1">
-                http://your-server-domain:5010/api/v1/calls/webhook
+                https://crm.automationcafe.in/api/v1/calls/webhook
               </code>
             </div>
           </div>
