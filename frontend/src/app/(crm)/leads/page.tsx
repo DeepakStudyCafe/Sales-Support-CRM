@@ -414,13 +414,13 @@ export default function LeadsPage() {
               {batchName && (
                 <div className="relative group inline-flex items-center cursor-pointer">
                   <span
-                    className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950/70 dark:text-sky-400 hover:bg-sky-200 transition-colors"
+                    className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors shadow-xs"
                     title={`Batch: ${batchName}`}
                   >
-                    <Info className="h-2.5 w-2.5" />
+                    <Info className="h-2.5 w-2.5 text-amber-600 dark:text-amber-400" />
                   </span>
                   <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50">
-                    <div className="rounded-md bg-slate-900 text-white text-[11px] font-sans px-2 py-1 shadow-lg whitespace-nowrap">
+                    <div className="rounded-md bg-slate-900 text-white text-[11px] font-sans px-2.5 py-1 shadow-lg whitespace-nowrap font-medium">
                       Batch: {batchName}
                     </div>
                     <div className="w-1.5 h-1.5 bg-slate-900 rotate-45 -mt-0.5" />
@@ -482,10 +482,30 @@ export default function LeadsPage() {
       sortable: true,
       cell: (lead: Lead) => {
         const anyLead = lead as any;
+        const rawDate = anyLead.created_at || lead.createdAt;
+        if (!rawDate) return <span className="text-xs text-muted-foreground/60">-</span>;
+        const d = new Date(rawDate);
+        if (isNaN(d.getTime())) return <span className="text-xs text-muted-foreground/60">-</span>;
+
+        const dateStr = new Intl.DateTimeFormat('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }).format(d);
+
+        const timeStr = new Intl.DateTimeFormat('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        }).format(d);
+
         return (
-          <span className="text-xs text-muted-foreground font-mono">
-            {formatDate(anyLead.created_at || lead.createdAt)}
-          </span>
+          <div className="flex flex-col text-xs leading-tight">
+            <span className="text-muted-foreground/90 font-medium">{dateStr}</span>
+            <span className="text-[11px] text-muted-foreground/60 font-mono mt-0.5">{timeStr}</span>
+          </div>
         );
       },
     },

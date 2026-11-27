@@ -158,9 +158,10 @@ export class IVRService {
 
     const headers = this.getHeaders(creds.token);
 
-    // 1. Try modern POST /api/c2c_post
+    // 1. Try standard GET /api/c2c_get with query parameters
     try {
-      const response = await axios.post(`${creds.baseUrl}/api/c2c_post`, payload, {
+      const response = await axios.get(`${creds.baseUrl}/api/c2c_get`, {
+        params: payload,
         headers,
         timeout: 15000,
       });
@@ -174,16 +175,23 @@ export class IVRService {
           rawResponse: data,
         };
       }
-    } catch (postErr: any) {
-      logger.debug('POST /api/c2c_post returned error, trying GET /api/c2c_get fallback', {
-        error: postErr.message,
+    } catch (getErr: any) {
+      const getResp = getErr.response?.data;
+      if (getResp?.message === 'Token Invalid' || getResp?.status === 401) {
+        return {
+          success: false,
+          message: 'Invalid IVR Solutions API Token. Please check your token in backend/.env',
+          rawResponse: getResp,
+        };
+      }
+      logger.debug('GET /api/c2c_get returned non-success, trying POST /api/c2c_post fallback', {
+        error: getErr.message,
       });
     }
 
-    // 2. Fallback to GET /api/c2c_get
+    // 2. Fallback to POST /api/c2c_post
     try {
-      const response = await axios.get(`${creds.baseUrl}/api/c2c_get`, {
-        params: payload,
+      const response = await axios.post(`${creds.baseUrl}/api/c2c_post`, payload, {
         headers,
         timeout: 15000,
       });
@@ -203,8 +211,8 @@ export class IVRService {
           rawResponse: data,
         };
       }
-    } catch (getErr: any) {
-      const msg = getErr.response?.data?.message || getErr.response?.data?.error || getErr.message;
+    } catch (postErr: any) {
+      const msg = postErr.response?.data?.message || postErr.response?.data?.error || postErr.message;
       logger.error('Click-to-Call failed', { error: msg, params });
       return { success: false, message: `IVR Solutions call error: ${msg}` };
     }
@@ -488,16 +496,23 @@ export class IVRService {
         };
       }
     } catch (error: any) {
-      if (error.response?.status === 401 || error.response?.status === 403) {
+      const respData = error.response?.data;
+      if (
+        error.response?.status === 401 ||
+        error.response?.status === 403 ||
+        respData?.status === 401 ||
+        respData?.message === 'Token Invalid' ||
+        String(respData?.message).toLowerCase().includes('token')
+      ) {
         return {
           connected: false,
-          message: 'Invalid IVR Solutions API Token. Please check your token from ivrsolutions.in dashboard (Settings -> API Token).',
+          message: 'Invalid IVR Solutions API Token. Please check and copy your valid token from ivrsolutions.in dashboard (Settings -> API Token).',
           baseUrl: creds.baseUrl,
         };
       }
       return {
         connected: false,
-        message: error.response?.data?.message || error.message || 'Connection to https://api.ivrsolutions.in timed out',
+        message: respData?.message || error.message || 'Connection to https://api.ivrsolutions.in timed out',
         baseUrl: creds.baseUrl,
       };
     }
