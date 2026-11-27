@@ -31,18 +31,18 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     const token = Cookies.get('accessToken');
-    let socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-    if (!socketUrl && typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
-      if (isIp) {
-        socketUrl = `${window.location.protocol}//${hostname}:5010`;
+    let socketUrl = '';
+    if (typeof window !== 'undefined') {
+      // If loaded on HTTPS or domain name, ALWAYS use same-origin to prevent mixed content
+      if (window.location.protocol === 'https:' || !/^(\d{1,3}\.){3}\d{1,3}$/.test(window.location.hostname)) {
+        socketUrl = window.location.origin;
       } else {
-        socketUrl = `${window.location.protocol}//${hostname}`;
+        const hostname = window.location.hostname;
+        socketUrl = `${window.location.protocol}//${hostname}:5010`;
       }
     }
     if (!socketUrl) {
-      socketUrl = 'http://localhost:5010';
+      socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5010';
     }
 
     const socketInstance = io(socketUrl, {

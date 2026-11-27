@@ -2,18 +2,24 @@ import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } fro
 import Cookies from 'js-cookie'
 
 const getInitialApiUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
   if (typeof window !== 'undefined') {
+    // 1. If loaded over HTTPS or running on a domain name, ALWAYS use same-origin HTTPS
+    // to strictly prevent browser "Mixed Content" security blocks.
+    if (window.location.protocol === 'https:' || !/^(\d{1,3}\.){3}\d{1,3}$/.test(window.location.hostname)) {
+      return `${window.location.origin}/api/v1`;
+    }
+
+    // 2. If accessed via raw IP in HTTP (e.g. during direct VPS IP testing http://159.65.154.5:3025)
     const hostname = window.location.hostname;
-    const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
-    if (isIp) {
+    if (window.location.port !== '5010') {
       return `${window.location.protocol}//${hostname}:5010/api/v1`;
     }
-    return `${window.location.protocol}//${hostname}/api/v1`;
+
+    return `${window.location.origin}/api/v1`;
   }
-  return 'http://localhost:5010/api/v1';
+
+  // Server-side fallback during SSR / build
+  return process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5010/api/v1';
 };
 
 const API_BASE_URL = getInitialApiUrl();
@@ -47,8 +53,13 @@ const processQueue = (error: unknown, token: string | null = null) => {
 // Request interceptor: attach Authorization header and ensure correct dynamic host
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    if (!config.baseURL) {
-      config.baseURL = API_BASE_URL;
+    if (typeof window !== 'undefined') {
+      // Security enforcement: If page is loaded over HTTPS, strictly rewrite any insecure http:// endpoint to same-origin HTTPS
+      if (window.location.protocol === 'https:' && (!config.baseURL || config.baseURL.startsWith('http://'))) {
+        config.baseURL = `${window.location.origin}/api/v1`;
+      } else if (!config.baseURL) {
+        config.baseURL = getInitialApiUrl();
+      }
     }
     const token = Cookies.get('accessToken')
     if (token && config.headers) {
@@ -97,7 +108,8 @@ api.interceptors.response.use(
       }
 
       try {
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+        const refreshUrl = `${getInitialApiUrl()}/auth/refresh`;
+        const response = await axios.post(refreshUrl, {
           refreshToken,
         })
 
