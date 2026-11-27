@@ -5,6 +5,7 @@ import { env } from './config/environment';
 import { requestLogger } from './middleware/requestLogger.middleware';
 import { globalRateLimit } from './middleware/rateLimiter.middleware';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.middleware';
+import { logger } from './utils/logger';
 import routes from './routes';
 
 export function createApp(): Express {
@@ -15,22 +16,54 @@ export function createApp(): Express {
     contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
   }));
 
-  // CORS - Environment-driven origins without hardcoded URLs
-  const allowedOrigins = [
+  // CORS - Explicit domain allowance & regex match for automationcafe.in
+  const allowedOrigins = new Set([
+    'https://crm.automationcafe.in',
+    'http://crm.automationcafe.in',
+    'https://automationcafe.in',
+    'http://localhost:3025',
+    'http://localhost:3000',
     env.FRONTEND_URL,
     ...(env.CORS_ALLOWED_ORIGINS ? env.CORS_ALLOWED_ORIGINS.split(',').map((s) => s.trim()) : []),
-  ].filter(Boolean);
+  ].filter(Boolean).map((o) => o.replace(/\/$/, '')));
 
   app.use(cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || env.NODE_ENV !== 'production') {
+      // 1. Same-origin / server-to-server / curl without Origin header
+      if (!origin) {
         return callback(null, true);
       }
-      return callback(new Error(`CORS policy violation for origin: ${origin}`));
+
+      const cleanOrigin = origin.replace(/\/$/, '');
+
+      // 2. Exact match in allowed origins set
+      if (allowedOrigins.has(cleanOrigin)) {
+        return callback(null, true);
+      }
+
+      // 3. Any automationcafe.in domain or subdomain
+      if (/^https?:\/\/([a-zA-Z0-9-]+\.)*automationcafe\.in(:\d+)?$/.test(cleanOrigin)) {
+        return callback(null, true);
+      }
+
+      // 4. Localhost or private IP testing
+      if (/^https?:\/\/(localhost|127\.0\.0\.1|159\.65\.154\.5)(:\d+)?$/.test(cleanOrigin)) {
+        return callback(null, true);
+      }
+
+      // 5. In non-production, be permissive
+      if (env.NODE_ENV !== 'production') {
+        return callback(null, true);
+      }
+
+      // 6. Clean rejection without throwing Error (avoids Express 500 crash)
+      logger.warn(`CORS rejected origin: ${cleanOrigin}`);
+      return callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Set-Cookie'],
   }));
 
   // Body parsers

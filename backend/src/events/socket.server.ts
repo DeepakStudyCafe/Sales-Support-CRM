@@ -7,15 +7,27 @@ import { env } from '../config/environment';
 let io: SocketIOServer | null = null;
 
 export async function initializeSocketServer(httpServer: HTTPServer): Promise<SocketIOServer> {
-  const allowedOrigins = [
+  const allowedOrigins = new Set([
+    'https://crm.automationcafe.in',
+    'http://crm.automationcafe.in',
+    'https://automationcafe.in',
+    'http://localhost:3025',
+    'http://localhost:3000',
     env.FRONTEND_URL,
     ...(env.CORS_ALLOWED_ORIGINS ? env.CORS_ALLOWED_ORIGINS.split(',').map((s) => s.trim()) : []),
-  ].filter(Boolean);
+  ].filter(Boolean).map((o) => o.replace(/\/$/, '')));
 
   io = new SocketIOServer(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin) || env.NODE_ENV !== 'production') {
+        if (!origin) return callback(null, true);
+        const cleanOrigin = origin.replace(/\/$/, '');
+        if (
+          allowedOrigins.has(cleanOrigin) ||
+          /^https?:\/\/([a-zA-Z0-9-]+\.)*automationcafe\.in(:\d+)?$/.test(cleanOrigin) ||
+          /^https?:\/\/(localhost|127\.0\.0\.1|159\.65\.154\.5)(:\d+)?$/.test(cleanOrigin) ||
+          env.NODE_ENV !== 'production'
+        ) {
           return callback(null, true);
         }
         return callback(null, false);
