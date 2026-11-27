@@ -106,7 +106,11 @@ export class LeadRepository extends BaseRepository {
       countRequest.input('assigned_to', sql.UniqueIdentifier, options.assignedTo);
     }
     if (options.batchName) {
-      where.push('l.batch_name = @batch_name');
+      if (options.batchName === 'General Direct Leads') {
+        where.push('(l.batch_name IS NULL OR l.batch_name = \'\' OR l.batch_name = @batch_name)');
+      } else {
+        where.push('l.batch_name = @batch_name');
+      }
       request.input('batch_name', sql.NVarChar, options.batchName);
       countRequest.input('batch_name', sql.NVarChar, options.batchName);
     }

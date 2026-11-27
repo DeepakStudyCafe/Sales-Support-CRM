@@ -9,16 +9,16 @@ import { z } from 'zod';
 const router = Router();
 
 const createFollowUpSchema = z.object({
-  type: z.enum(['Task', 'Callback', 'Meeting', 'Email']).default('Task'),
-  title: z.string().min(1).max(200),
-  description: z.string().optional(),
-  scheduledAt: z.string().datetime({ message: 'Valid datetime required' }),
-  assignedTo: z.string().uuid(),
-  priority: z.enum(['Low', 'Medium', 'High', 'Urgent']).default('Medium'),
-  leadId: z.string().uuid().optional(),
-  customerId: z.string().uuid().optional(),
-  ticketId: z.string().uuid().optional(),
-  callId: z.string().uuid().optional(),
+  type: z.string().optional().default('Task'),
+  title: z.string().min(1, 'Title is required').max(200),
+  description: z.string().optional().nullable(),
+  scheduledAt: z.string().min(1, 'Scheduled date and time is required'),
+  assignedTo: z.string().optional().nullable(),
+  priority: z.enum(['Low', 'Medium', 'High', 'Urgent']).optional().default('Medium'),
+  leadId: z.string().optional().nullable(),
+  customerId: z.string().optional().nullable(),
+  ticketId: z.string().optional().nullable(),
+  callId: z.string().optional().nullable(),
 });
 
 // List follow-ups
@@ -106,18 +106,30 @@ router.post('/', requirePermission('followups', 'all', 'create'), async (req: Re
     return;
   }
 
+  const scheduledDate = new Date(parsed.data.scheduledAt);
+  if (isNaN(scheduledDate.getTime())) {
+    sendError(res, 'Invalid scheduled date and time format', 400);
+    return;
+  }
+
+  const assignedTo = (parsed.data.assignedTo && parsed.data.assignedTo.trim().length > 10)
+    ? parsed.data.assignedTo.trim()
+    : req.user.userId;
+
+  const sanitizeUuid = (val?: string | null) => (val && val.trim().length > 10 ? val.trim() : null);
+
   const pool = getPool();
   const result = await pool.request()
-    .input('type', sql.NVarChar, parsed.data.type)
+    .input('type', sql.NVarChar, parsed.data.type || 'Task')
     .input('title', sql.NVarChar, parsed.data.title)
     .input('description', sql.NVarChar, parsed.data.description ?? null)
-    .input('scheduled_at', sql.DateTime2, new Date(parsed.data.scheduledAt))
-    .input('assigned_to', sql.UniqueIdentifier, parsed.data.assignedTo)
-    .input('priority', sql.NVarChar, parsed.data.priority)
-    .input('lead_id', sql.UniqueIdentifier, parsed.data.leadId ?? null)
-    .input('customer_id', sql.UniqueIdentifier, parsed.data.customerId ?? null)
-    .input('ticket_id', sql.UniqueIdentifier, parsed.data.ticketId ?? null)
-    .input('call_id', sql.UniqueIdentifier, parsed.data.callId ?? null)
+    .input('scheduled_at', sql.DateTime2, scheduledDate)
+    .input('assigned_to', sql.UniqueIdentifier, assignedTo)
+    .input('priority', sql.NVarChar, parsed.data.priority || 'Medium')
+    .input('lead_id', sql.UniqueIdentifier, sanitizeUuid(parsed.data.leadId))
+    .input('customer_id', sql.UniqueIdentifier, sanitizeUuid(parsed.data.customerId))
+    .input('ticket_id', sql.UniqueIdentifier, sanitizeUuid(parsed.data.ticketId))
+    .input('call_id', sql.UniqueIdentifier, sanitizeUuid(parsed.data.callId))
     .input('created_by', sql.UniqueIdentifier, req.user.userId)
     .query<{ id: string }>(`
       INSERT INTO follow_ups (type, title, description, scheduled_at, assigned_to, priority, lead_id, customer_id, ticket_id, call_id, created_by)
@@ -126,14 +138,16 @@ router.post('/', requirePermission('followups', 'all', 'create'), async (req: Re
     `);
 
   // Notify assignee
-  if (parsed.data.assignedTo !== req.user.userId) {
-    await notificationService.create({
-      userId: parsed.data.assignedTo,
-      type: 'followup_assigned',
-      title: 'New Task Assigned',
-      body: `Task "${parsed.data.title}" scheduled for ${new Date(parsed.data.scheduledAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
-      data: { entityType: 'followup', entityId: result.recordset[0].id, url: `/follow-ups` },
-    });
+  if (assignedTo !== req.user.userId) {
+    try {
+      await notificationService.create({
+        userId: assignedTo,
+        type: 'followup_assigned',
+        title: 'New Task Assigned',
+        body: `Task "${parsed.data.title}" scheduled for ${scheduledDate.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
+        data: { entityType: 'followup', entityId: result.recordset[0].id, url: `/follow-ups` },
+      });
+    } catch {}
   }
 
   sendSuccess(res, { id: result.recordset[0].id }, 'Follow-up created successfully', 201);

@@ -256,22 +256,43 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
   // Export Errors Report
   const handleDownloadErrorReport = () => {
-    if (!importResult?.errors?.length && !parsedRows.some(r => !r._isValid)) {
+    const backendErrors = importResult?.errors || [];
+    const localInvalid = parsedRows.filter(r => !r._isValid);
+
+    if (backendErrors.length === 0 && localInvalid.length === 0) {
       toast.info('No errors to export.');
       return;
     }
 
-    const invalidRows = parsedRows.filter(r => !r._isValid).map(r => ({
-      Row: r._rowNumber,
-      Errors: r._errors.join(', '),
-      ...r,
-    }));
+    let errorRows: any[] = [];
+    if (backendErrors.length > 0) {
+      errorRows = backendErrors.map(err => {
+        const originalRow = parsedRows.find(r => r._rowNumber === err.row) || parsedRows[err.row - 2] || parsedRows[0] || {};
+        const { _rowNumber, _isValid, _errors, ...dataFields } = originalRow;
+        return {
+          'Excel Row': err.row,
+          'Failed Field': err.field,
+          'Failure Reason': err.message,
+          ...dataFields,
+        };
+      });
+    } else {
+      errorRows = localInvalid.map(r => {
+        const { _rowNumber, _isValid, _errors, ...dataFields } = r;
+        return {
+          'Excel Row': _rowNumber,
+          'Failed Field': 'Validation',
+          'Failure Reason': _errors.join('; '),
+          ...dataFields,
+        };
+      });
+    }
 
-    const ws = XLSX.utils.json_to_sheet(invalidRows);
+    const ws = XLSX.utils.json_to_sheet(errorRows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Import Errors');
+    XLSX.utils.book_append_sheet(wb, ws, 'Import Failures');
     XLSX.writeFile(wb, `${module}_import_errors_${Date.now()}.xlsx`);
-    toast.success('Downloaded error report.');
+    toast.success(`Downloaded error report with ${errorRows.length} failed record(s).`);
   };
 
   const validCount = parsedRows.filter(r => r._isValid).length;
@@ -570,12 +591,30 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               </div>
             </div>
 
+            {importResult.failed > 0 && importResult.errors && importResult.errors.length > 0 && (
+              <div className="max-w-2xl mx-auto rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20 p-4 text-left space-y-2">
+                <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4" /> Reasons {importResult.failed} Record(s) Failed:
+                </h5>
+                <div className="max-h-40 overflow-y-auto space-y-1.5 text-xs">
+                  {importResult.errors.map((e, idx) => (
+                    <div key={idx} className="flex items-start gap-2 bg-background p-2 rounded-lg border text-[11px]">
+                      <span className="font-mono font-bold text-rose-600 shrink-0">Row {e.row}:</span>
+                      <span className="text-muted-foreground flex-1">
+                        <strong className="text-foreground">{e.field}</strong> — {e.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {importResult.failed > 0 && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleDownloadErrorReport}
-                className="gap-2 text-xs text-rose-600"
+                className="gap-2 text-xs text-rose-600 hover:text-rose-700"
               >
                 <Download className="h-3.5 w-3.5" />
                 Download Error Report (.xlsx)

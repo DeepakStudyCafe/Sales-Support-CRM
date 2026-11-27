@@ -94,8 +94,8 @@ export default function FollowUpsPage() {
     fetchTasks();
     async function loadUsers() {
       try {
-        const res = await api.get('/users?limit=100');
-        if (res.data.success && res.data.data) {
+        const res = await api.get('/users/assignable').catch(() => api.get('/users?limit=100&isActive=true'));
+        if (res.data?.success && Array.isArray(res.data?.data)) {
           setUsers(res.data.data);
         }
       } catch {
@@ -110,8 +110,17 @@ export default function FollowUpsPage() {
     if (!formData.title || !formData.scheduledAt) return;
     setIsSubmitting(true);
     try {
-      await api.post('/follow-ups', formData);
-      toast.success('Task scheduled successfully');
+      const payload: any = {
+        title: formData.title.trim(),
+        type: formData.type || 'Task',
+        priority: formData.priority || 'Medium',
+        scheduledAt: new Date(formData.scheduledAt).toISOString(),
+      };
+      if (formData.assignedTo && formData.assignedTo.trim()) {
+        payload.assignedTo = formData.assignedTo.trim();
+      }
+      await api.post('/follow-ups', payload);
+      toast.success('Follow-up task scheduled successfully');
       setModalOpen(false);
       setFormData({
         title: '',
@@ -522,7 +531,7 @@ export default function FollowUpsPage() {
                   <SelectContent>
                     {users.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
-                        {u.first_name} {u.last_name}
+                        {u.first_name} {u.last_name} ({u.role_name || 'Agent'})
                       </SelectItem>
                     ))}
                   </SelectContent>

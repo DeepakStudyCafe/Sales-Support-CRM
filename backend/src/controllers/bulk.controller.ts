@@ -22,25 +22,26 @@ export class BulkController {
       switch (module.toLowerCase()) {
         case 'leads':
           headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Company', 'Source', 'Status', 'Priority', 'City', 'State', 'Notes'];
+          const suffix = `${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 90)}`;
           sampleData = [
             {
               'First Name': 'Rohan',
               'Last Name': 'Verma',
-              'Email': 'rohan.verma@example.in',
-              'Phone': '+919876543210',
+              'Email': `rohan.prospect${suffix}@example.in`,
+              'Phone': `+9198765${suffix}1`,
               'Company': 'Apex Global Ltd',
               'Source': 'Website',
               'Status': 'New',
               'Priority': 'High',
               'City': 'Mumbai',
               'State': 'Maharashtra',
-              'Notes': 'Interested in CRM Enterprise 50-user tier'
+              'Notes': 'Interested in CRM Enterprise tier'
             },
             {
               'First Name': 'Pooja',
               'Last Name': 'Rao',
-              'Email': 'pooja.rao@innovate.co.in',
-              'Phone': '+919812345678',
+              'Email': `pooja.prospect${suffix}@innovate.co.in`,
+              'Phone': `+9198123${suffix}2`,
               'Company': 'Innovate Solutions',
               'Source': 'LinkedIn',
               'Status': 'Qualified',
@@ -61,12 +62,13 @@ export class BulkController {
 
         case 'customers':
           headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Company', 'Address', 'City', 'State', 'Pincode', 'Notes'];
+          const custSuffix = `${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 90)}`;
           sampleData = [
             {
               'First Name': 'Kunal',
               'Last Name': 'Kapoor',
-              'Email': 'kunal.kapoor@tata.com',
-              'Phone': '+919820011223',
+              'Email': `kunal.customer${custSuffix}@example.com`,
+              'Phone': `+9198200${custSuffix}`,
               'Company': 'Tata Motors Logistics',
               'Address': 'Bombay House, 24 Homi Mody Street',
               'City': 'Mumbai',
@@ -168,7 +170,7 @@ export class BulkController {
 
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
-          const rowNum = i + 2; // Excel row numbering (1-indexed + header)
+          const rowNum = Number(r._rowNumber) || (i + 2);
 
           const firstName = (r['First Name'] || r.firstName || r.first_name || '').toString().trim();
           const lastName = (r['Last Name'] || r.lastName || r.last_name || '').toString().trim();
@@ -197,9 +199,14 @@ export class BulkController {
           if (email) {
             const dupCheck = await pool.request()
               .input('email', sql.NVarChar, email)
-              .query('SELECT TOP 1 id FROM leads WHERE email = @email');
+              .query('SELECT TOP 1 id, first_name, last_name FROM leads WHERE email = @email AND deleted_at IS NULL');
             if (dupCheck.recordset.length > 0) {
-              errors.push({ row: rowNum, field: 'Email', message: `Lead with email '${email}' already exists` });
+              const existingName = `${dupCheck.recordset[0].first_name || ''} ${dupCheck.recordset[0].last_name || ''}`.trim();
+              errors.push({
+                row: rowNum,
+                field: 'Email',
+                message: `Email '${email}' already exists in CRM (lead: ${existingName || 'Existing Record'}). Change email or leave blank.`
+              });
               continue;
             }
           }
@@ -251,7 +258,7 @@ export class BulkController {
       } else if (module.toLowerCase() === 'customers') {
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
-          const rowNum = i + 2;
+          const rowNum = Number(r._rowNumber) || (i + 2);
 
           const firstName = (r['First Name'] || r.firstName || r.first_name || '').toString().trim();
           const lastName = (r['Last Name'] || r.lastName || r.last_name || '').toString().trim();
@@ -311,7 +318,7 @@ export class BulkController {
 
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
-          const rowNum = i + 2;
+          const rowNum = Number(r._rowNumber) || (i + 2);
 
           const title = (r['Title'] || r.title || '').toString().trim();
           const description = (r['Description'] || r.description || '').toString().trim();
