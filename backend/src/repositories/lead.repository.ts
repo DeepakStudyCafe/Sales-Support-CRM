@@ -60,6 +60,7 @@ export interface LeadFilterOptions {
   priority?: string;
   sourceId?: string;
   assignedTo?: string;
+  batchName?: string;
   pipelineStage?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -103,6 +104,11 @@ export class LeadRepository extends BaseRepository {
       where.push('l.assigned_to = @assigned_to');
       request.input('assigned_to', sql.UniqueIdentifier, options.assignedTo);
       countRequest.input('assigned_to', sql.UniqueIdentifier, options.assignedTo);
+    }
+    if (options.batchName) {
+      where.push('l.batch_name = @batch_name');
+      request.input('batch_name', sql.NVarChar, options.batchName);
+      countRequest.input('batch_name', sql.NVarChar, options.batchName);
     }
     if (options.pipelineStage) {
       where.push('l.pipeline_stage = @pipeline_stage');
@@ -364,6 +370,73 @@ export class LeadRepository extends BaseRepository {
     const pool = getPool();
     const result = await pool.request().query('SELECT * FROM lead_sources WHERE is_active = 1 ORDER BY name');
     return result.recordset;
+  }
+
+  async getLeadBatches(options: { assignedTo?: string; userId?: string; isAdmin?: boolean }): Promise<any[]> {
+    const pool = getPool();
+    const request = pool.request();
+    const where: string[] = ['l.deleted_at IS NULL'];
+
+    if (!options.isAdmin && options.userId) {
+      where.push('l.assigned_to = @user_id');
+      request.input('user_id', sql.UniqueIdentifier, options.userId);
+    } else if (options.assignedTo && options.assignedTo !== 'all') {
+      where.push('l.assigned_to = @assigned_to');
+      request.input('assigned_to', sql.UniqueIdentifier, options.assignedTo);
+    }
+
+    const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+
+    const result = await request.query(`
+      SELECT 
+        ISNULL(l.batch_name, 'General Direct Leads') as batch_name,
+        l.assigned_to,
+        ISNULL(CONCAT(u.first_name, ' ', u.last_name), 'Unassigned') as assigned_to_name,
+        COUNT(l.id) as total_leads,
+        SUM(CASE WHEN l.status = 'New' THEN 1 ELSE 0 END) as new_count,
+        SUM(CASE WHEN l.status IN ('Contacted', 'Follow-up') THEN 1 ELSE 0 END) as contacted_count,
+        SUM(CASE WHEN l.status IN ('Interested', 'Qualified', 'Proposal') THEN 1 ELSE 0 END) as interested_count,
+        SUM(CASE WHEN l.status = 'Converted' THEN 1 ELSE 0 END) as converted_count,
+        SUM(CASE WHEN l.status = 'Lost' THEN 1 ELSE 0 END) as lost_count,
+        MIN(l.created_at) as first_created_at,
+        MAX(l.created_at) as last_created_at
+      FROM leads l
+      LEFT JOIN users u ON l.assigned_to = u.id
+      ${whereClause}
+      GROUP BY l.batch_name, l.assigned_to, u.first_name, u.last_name
+      ORDER BY MAX(l.created_at) DESC
+    `);
+
+    return result.recordset;
+  }
+
+  async updateRemarks(leadId: string, notes: string, status?: string, userId?: string): Promise<any> {
+    const pool = getPool();
+    const request = pool.request()
+      .input('id', sql.UniqueIdentifier, leadId)
+      .input('notes', sql.NVarChar, notes);
+
+    let query = 'UPDATE leads SET notes = @notes, updated_at = GETUTCDATE()';
+    if (status) {
+      request.input('status', sql.NVarChar, status);
+      query += ', status = @status';
+    }
+    query += ' WHERE id = @id';
+
+    await request.query(query);
+
+    if (userId) {
+      try {
+        await this.addActivity({
+          leadId,
+          activityType: 'NOTE',
+          description: `Remarks updated: ${notes.slice(0, 80)}${notes.length > 80 ? '...' : ''}`,
+          performedBy: userId,
+        });
+      } catch {}
+    }
+
+    return this.findById(leadId);
   }
 }
 

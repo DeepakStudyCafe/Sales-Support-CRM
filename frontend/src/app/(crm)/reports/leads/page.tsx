@@ -20,8 +20,9 @@ export default function LeadReportsPage() {
     try {
       const days = parseInt(dateRange);
       const dateFrom = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const res = await api.get('/reports/leads', { params: { dateFrom } });
-      if (res.data.success && res.data.data) {
+      const dateTo = new Date().toISOString().split('T')[0];
+      const res = await api.get('/reports/leads', { params: { dateFrom, dateTo } });
+      if (res.data?.success && res.data?.data) {
         setData(res.data.data);
       }
     } catch {

@@ -78,11 +78,14 @@ export default function LeadsPage() {
 
   // Fetch Users for Bulk Assignment
   useEffect(() => {
-    api.get('/users?limit=50').then((res) => {
-      if (res.data?.success && res.data?.data) {
-        setUsersList(res.data.data);
-      }
-    }).catch(() => {});
+    api.get('/users/assignable')
+      .catch(() => api.get('/users?limit=100&isActive=true'))
+      .then((res) => {
+        if (res.data?.success && Array.isArray(res.data?.data)) {
+          setUsersList(res.data.data);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const fetchLeads = useCallback(async () => {
@@ -235,25 +238,36 @@ export default function LeadsPage() {
       key: 'name',
       header: 'Lead Name & Company',
       sortable: true,
-      cell: (lead: Lead) => (
-        <div className="flex flex-col">
-          <Link
-            href={`/leads/${lead.id}`}
-            className="font-medium text-foreground hover:text-primary hover:underline"
-          >
-            {lead.firstName} {lead.lastName}
-          </Link>
-          <span className="text-xs text-muted-foreground">{lead.company || 'Individual Prospect'}</span>
-        </div>
-      ),
+      cell: (lead: Lead) => {
+        const anyLead = lead as any;
+        const fullName = `${anyLead.first_name || lead.firstName || ''} ${anyLead.last_name || lead.lastName || ''}`.trim() || 'Unnamed Lead';
+        return (
+          <div className="flex flex-col">
+            <Link
+              href={`/leads/${lead.id}`}
+              className="font-medium text-foreground hover:text-primary hover:underline"
+            >
+              {fullName}
+            </Link>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-xs text-muted-foreground">{lead.company || anyLead.company || 'Individual Prospect'}</span>
+              {anyLead.batch_name && (
+                <span className="text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.2 rounded font-medium">
+                  {anyLead.batch_name}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      },
     },
     {
       key: 'phone',
       header: 'Contact Info',
       cell: (lead: Lead) => (
         <div className="flex flex-col text-xs">
-          <span className="font-mono text-foreground">{lead.phone}</span>
-          <span className="text-muted-foreground">{lead.email || '-'}</span>
+          <span className="font-mono text-foreground">{lead.phone || (lead as any).phone}</span>
+          <span className="text-muted-foreground">{lead.email || (lead as any).email || '-'}</span>
         </div>
       ),
     },
@@ -262,7 +276,7 @@ export default function LeadsPage() {
       header: 'Source',
       cell: (lead: Lead) => (
         <span className="text-xs font-medium text-muted-foreground">
-          {lead.source?.name || 'Website Direct'}
+          {(lead as any).source_name || lead.source?.name || 'Website Direct'}
         </span>
       ),
     },
@@ -294,9 +308,14 @@ export default function LeadsPage() {
       key: 'createdAt',
       header: 'Created Date',
       sortable: true,
-      cell: (lead: Lead) => (
-        <span className="text-xs text-muted-foreground">{formatDate(lead.createdAt)}</span>
-      ),
+      cell: (lead: Lead) => {
+        const anyLead = lead as any;
+        return (
+          <span className="text-xs text-muted-foreground font-mono">
+            {formatDate(anyLead.created_at || lead.createdAt)}
+          </span>
+        );
+      },
     },
     {
       key: 'actions',

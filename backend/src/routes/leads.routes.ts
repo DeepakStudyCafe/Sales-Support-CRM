@@ -6,7 +6,9 @@ const router = Router();
 
 router.get('/stats', requirePermission('dashboard', 'overview', 'view'), (req, res) => leadsController.getDashboardStats(req, res));
 router.get('/sources', (req, res) => leadsController.getSources(req, res));
+router.get('/batches', requirePermission('leads', 'all', 'view'), (req, res) => leadsController.getBatches(req, res));
 router.get('/', requirePermission('leads', 'all', 'view'), (req, res) => leadsController.list(req, res));
+router.patch('/:id/remarks', requirePermission('leads', 'all', 'edit'), (req, res) => leadsController.updateRemarks(req, res));
 router.get('/:id', requirePermission('leads', 'all', 'view'), (req, res) => leadsController.getById(req, res));
 router.get('/:id/activities', requirePermission('leads', 'all', 'view'), (req, res) => leadsController.getActivities(req, res));
 router.post('/', requirePermission('leads', 'all', 'create'), (req, res) => leadsController.create(req, res));

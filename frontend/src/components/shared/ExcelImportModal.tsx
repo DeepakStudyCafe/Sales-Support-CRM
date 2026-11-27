@@ -19,6 +19,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   FileSpreadsheet,
   Upload,
@@ -30,6 +39,8 @@ import {
   ArrowRight,
   ArrowLeft,
   FileCheck,
+  Users,
+  Tag,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import api from '@/services/api';
@@ -63,6 +74,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const [columns, setColumns] = useState<string[]>([]);
   const [filterView, setFilterView] = useState<'all' | 'valid' | 'invalid'>('all');
   const [isUploading, setIsUploading] = useState(false);
+  const [batchName, setBatchName] = useState('');
+  const [assignedTo, setAssignedTo] = useState('unassigned');
+  const [assignableUsers, setAssignableUsers] = useState<any[]>([]);
   const [importResult, setImportResult] = useState<{
     total: number;
     imported: number;
@@ -72,6 +86,20 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Load active assignable employees when modal opens for leads
+  React.useEffect(() => {
+    if (isOpen && module === 'leads') {
+      api.get('/users/assignable')
+        .catch(() => api.get('/users?limit=100&isActive=true'))
+        .then((res) => {
+          if (res.data?.success && Array.isArray(res.data?.data)) {
+            setAssignableUsers(res.data.data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, module]);
+
   const resetState = () => {
     setStep(1);
     setFile(null);
@@ -79,6 +107,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     setColumns([]);
     setFilterView('all');
     setIsUploading(false);
+    setBatchName('');
+    setAssignedTo('unassigned');
     setImportResult(null);
   };
 
@@ -198,10 +228,13 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
     setIsUploading(true);
     try {
-      // Send valid rows directly as JSON payload for high reliability
-      const response = await api.post(`/bulk/import/${module}`, {
-        records: validRows,
-      });
+      // Send valid rows directly as JSON payload with batchName & assignedTo for leads
+      const payload: any = { records: validRows };
+      if (module === 'leads') {
+        if (batchName.trim()) payload.batchName = batchName.trim();
+        if (assignedTo && assignedTo !== 'unassigned') payload.assignedTo = assignedTo;
+      }
+      const response = await api.post(`/bulk/import/${module}`, payload);
 
       const resData = response.data?.data || {
         total: validRows.length,
@@ -289,8 +322,59 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
         {/* STEP 1: Upload and Template */}
         {step === 1 && (
-          <div className="py-6 space-y-6 overflow-y-auto">
-            {/* Step 1A: Download Template Banner */}
+          <div className="py-6 space-y-5 overflow-y-auto">
+            {/* Step 1A: Batch Name & Employee Assignment Configuration */}
+            {module === 'leads' && (
+              <div className="p-4 rounded-xl border bg-card space-y-3.5 shadow-xs">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <Tag className="h-4 w-4 text-primary" />
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground">Lead Batch / List Naming & Employee Assignment</h4>
+                    <p className="text-[11px] text-muted-foreground">Label this upload so Super Admin and assigned users can view and track leads by batch</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">
+                      Lead Batch / List Name <span className="text-rose-500">*</span>
+                    </Label>
+                    <Input
+                      placeholder="e.g. Delhi Real Estate Nov 27, Retail Inquiries"
+                      value={batchName}
+                      onChange={(e) => setBatchName(e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">
+                      Assign All Leads to Employee
+                    </Label>
+                    <Select value={assignedTo} onValueChange={setAssignedTo}>
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue placeholder="Select an executive..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-56">
+                        <SelectItem value="unassigned">
+                          <span className="text-muted-foreground font-medium">Leave Unassigned / Default</span>
+                        </SelectItem>
+                        {assignableUsers.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold">{u.first_name} {u.last_name}</span>
+                              <span className="text-[10px] text-muted-foreground">({u.role_name || 'Agent'})</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 1B: Download Template Banner */}
             <div className="flex items-center justify-between p-4 rounded-xl border bg-slate-50 dark:bg-slate-900/50">
               <div className="space-y-1">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
@@ -312,7 +396,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               </Button>
             </div>
 
-            {/* Step 1B: Drag & Drop Zone */}
+            {/* Step 1C: Drag & Drop Zone */}
             <div
               onClick={() => fileInputRef.current?.click()}
               className="border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-primary/60 hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-all text-center space-y-3"
@@ -338,6 +422,20 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         {/* STEP 2: Preview & Validation Table */}
         {step === 2 && (
           <div className="py-4 space-y-4 flex-1 flex flex-col min-h-0">
+            {module === 'leads' && (
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl border bg-muted/30 text-xs">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="border-primary/40 bg-primary/5 text-primary text-[11px] gap-1 font-mono">
+                    <Tag className="h-3 w-3" /> Batch: {batchName.trim() || 'General Upload'}
+                  </Badge>
+                  <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/5 text-emerald-600 text-[11px] gap-1 font-medium">
+                    <Users className="h-3 w-3" /> Assignee: {assignableUsers.find(u => u.id === assignedTo) ? `${assignableUsers.find(u => u.id === assignedTo)?.first_name} ${assignableUsers.find(u => u.id === assignedTo)?.last_name} (${assignableUsers.find(u => u.id === assignedTo)?.role_name})` : 'Unassigned / Current User'}
+                  </Badge>
+                </div>
+                <span className="text-[11px] text-muted-foreground">All valid leads will be tagged with this batch</span>
+              </div>
+            )}
+
             {/* Stats & Filter Bar */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs">

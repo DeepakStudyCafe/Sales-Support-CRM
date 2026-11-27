@@ -4,6 +4,7 @@ import { leadService } from '../services/lead.service';
 import { leadRepository } from '../repositories/lead.repository';
 import { sendSuccess, sendError, sendPaginated } from '../utils/response';
 import { getPaginationParams } from '../utils/pagination';
+import { getPool, sql } from '../config/database';
 
 const createLeadSchema = z.object({
   first_name: z.string().min(1, 'First name required').max(100),
@@ -59,6 +60,7 @@ export class LeadsController {
       priority: req.query.priority as string,
       sourceId: req.query.sourceId as string,
       assignedTo: req.query.assignedTo as string,
+      batchName: req.query.batchName as string,
       pipelineStage: req.query.pipelineStage as string,
       dateFrom: req.query.dateFrom as string,
       dateTo: req.query.dateTo as string,
@@ -69,6 +71,51 @@ export class LeadsController {
     });
 
     sendPaginated(res, result.data, { page, limit, total: result.total, totalPages: Math.ceil(result.total / limit) });
+  }
+
+  async getBatches(req: Request, res: Response): Promise<void> {
+    if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
+    try {
+      const isAdmin = ['Super Admin', 'Admin'].includes(req.user.roleName);
+      const batches = await leadRepository.getLeadBatches({
+        assignedTo: req.query.assignedTo as string,
+        userId: req.user.userId,
+        isAdmin,
+      });
+      sendSuccess(res, batches);
+    } catch (err: any) {
+      sendError(res, err.message, 500);
+    }
+  }
+
+  async updateRemarks(req: Request, res: Response): Promise<void> {
+    if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
+    try {
+      const { id } = req.params;
+      const { notes, status, followUpAt } = req.body;
+      const updated = await leadRepository.updateRemarks(id, notes || '', status, req.user.userId);
+
+      // If scheduled follow-up was provided, schedule it in follow_ups
+      if (followUpAt) {
+        try {
+          const pool = getPool();
+          await pool.request()
+            .input('title', sql.NVarChar, `Follow-up: ${updated?.first_name || 'Lead'}`)
+            .input('desc', sql.NVarChar, notes || 'Scheduled follow-up callback')
+            .input('sched', sql.DateTime2, new Date(followUpAt))
+            .input('assigned', sql.UniqueIdentifier, updated?.assigned_to || req.user.userId)
+            .input('lead_id', sql.UniqueIdentifier, id)
+            .query(`
+              INSERT INTO follow_ups (id, title, description, scheduled_at, assigned_to, lead_id, type, priority, status, created_at, updated_at)
+              VALUES (NEWID(), @title, @desc, @sched, @assigned, @lead_id, 'Callback', 'Medium', 'Pending', GETUTCDATE(), GETUTCDATE())
+            `);
+        } catch {}
+      }
+
+      sendSuccess(res, updated, 'Lead remarks & follow-up updated successfully');
+    } catch (err: any) {
+      sendError(res, err.message, 400);
+    }
   }
 
   async getById(req: Request, res: Response): Promise<void> {

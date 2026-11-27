@@ -5,8 +5,17 @@ import { requirePermission } from '../middleware/permission.middleware';
 
 const router = Router();
 
-// All user management routes require authentication + permissions
-router.get('/', requirePermission('users', 'all', 'view'), (req, res) => usersController.list(req, res));
+// All user management routes require authentication
+// Assignable employee directory (active Admin, Sales, Support) for lead/campaign assignment & tracking
+router.get('/assignable', (req, res) => usersController.getAssignable(req, res));
+
+// All users list: Super Admin gets full access; active users filter allowed for team assignment
+router.get('/', (req, res, next) => {
+  if (req.user?.roleName === 'Super Admin' || req.query.isActive === 'true' || req.query.forAssignment === 'true') {
+    return usersController.list(req, res);
+  }
+  return requirePermission('users', 'all', 'view')(req, res, next);
+}, (req, res) => usersController.list(req, res));
 router.get('/my/login-history', (req, res) => usersController.getMyLoginHistory(req, res));
 router.get('/:id', requirePermission('users', 'all', 'view'), (req, res) => usersController.getById(req, res));
 router.get('/:id/login-history', requirePermission('users', 'activity', 'view'), (req, res) => usersController.getLoginHistory(req, res));

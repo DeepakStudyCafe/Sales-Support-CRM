@@ -4,6 +4,7 @@ import { userService } from '../services/user.service';
 import { userRepository } from '../repositories/user.repository';
 import { sendSuccess, sendError, sendPaginated } from '../utils/response';
 import { getPaginationParams } from '../utils/pagination';
+import { getPool } from '../config/database';
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -22,6 +23,22 @@ const createUserSchema = z.object({
 const updateUserSchema = createUserSchema.partial().omit({ email: true });
 
 export class UsersController {
+  async getAssignable(req: Request, res: Response): Promise<void> {
+    try {
+      const pool = getPool();
+      const result = await pool.request().query(`
+        SELECT u.id, u.first_name, u.last_name, u.email, u.phone, r.name as role_name
+        FROM users u
+        JOIN roles r ON u.role_id = r.id
+        WHERE u.is_active = 1 AND u.deleted_at IS NULL
+        ORDER BY u.first_name ASC
+      `);
+      sendSuccess(res, result.recordset);
+    } catch (err: any) {
+      sendError(res, err.message, 500);
+    }
+  }
+
   async list(req: Request, res: Response): Promise<void> {
     const { page, limit } = getPaginationParams(req.query);
     const result = await userService.listUsers({

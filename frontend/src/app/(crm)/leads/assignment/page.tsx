@@ -66,12 +66,12 @@ export default function LeadAssignmentPage() {
   useEffect(() => {
     async function loadAgents() {
       try {
-        const res = await api.get('/users?limit=100&isActive=true');
-        if (res.data.success && res.data.data) {
+        const res = await api.get('/users/assignable').catch(() => api.get('/users?limit=100&isActive=true'));
+        if (res.data?.success && Array.isArray(res.data?.data)) {
           setUsers(res.data.data);
         }
-      } catch {
-        // Ignored
+      } catch (err: any) {
+        console.error('Failed to load agents list', err);
       }
     }
     loadAgents();

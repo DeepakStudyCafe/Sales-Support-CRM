@@ -154,7 +154,9 @@ export class BulkController {
       }
 
       const pool = await getPool();
-      const currentUserId = req.user?.id || null;
+      const currentUserId = req.user?.userId || req.user?.id || null;
+      const targetAssignedTo = (req.body?.assignedTo && req.body?.assignedTo !== 'unassigned') ? req.body.assignedTo : null;
+      const batchName = (req.body?.batchName || '').toString().trim() || null;
       const errors: Array<{ row: number; field: string; message: string }> = [];
       let importedCount = 0;
 
@@ -179,6 +181,8 @@ export class BulkController {
           const city = (r['City'] || r.city || '').toString().trim();
           const state = (r['State'] || r.state || '').toString().trim();
           const notes = (r['Notes'] || r.notes || '').toString().trim();
+          const leadBatch = batchName || r['Batch Name'] || r['Batch'] || r.batch_name || null;
+          const leadAssignedTo = targetAssignedTo || currentUserId;
 
           if (!firstName) {
             errors.push({ row: rowNum, field: 'First Name', message: 'First name is required' });
@@ -203,7 +207,7 @@ export class BulkController {
           const sourceId = srcMap.get(sourceName.toLowerCase()) || defaultSourceId;
 
           try {
-            await pool.request()
+            const leadInsertRes = await pool.request()
               .input('fn', sql.NVarChar, firstName)
               .input('ln', sql.NVarChar, lastName)
               .input('email', sql.NVarChar, email || null)
@@ -213,14 +217,32 @@ export class BulkController {
               .input('status', sql.NVarChar, status)
               .input('pri', sql.NVarChar, priority)
               .input('stage', sql.NVarChar, status)
-              .input('assigned', sql.UniqueIdentifier, currentUserId)
+              .input('assigned', sql.UniqueIdentifier, leadAssignedTo)
+              .input('batch_name', sql.NVarChar, leadBatch)
               .input('city', sql.NVarChar, city || null)
               .input('state', sql.NVarChar, state || null)
               .input('notes', sql.NVarChar, notes || null)
+              .input('created_by', sql.UniqueIdentifier, currentUserId)
               .query(`
-                INSERT INTO leads (id, first_name, last_name, email, phone, company, source_id, status, priority, pipeline_stage, assigned_to, city, state, notes, created_at, updated_at)
-                VALUES (NEWID(), @fn, @ln, @email, @phone, @comp, @src, @status, @pri, @stage, @assigned, @city, @state, @notes, GETUTCDATE(), GETUTCDATE())
+                INSERT INTO leads (id, first_name, last_name, email, phone, company, source_id, status, priority, pipeline_stage, assigned_to, batch_name, city, state, notes, created_by, created_at, updated_at)
+                OUTPUT INSERTED.id
+                VALUES (NEWID(), @fn, @ln, @email, @phone, @comp, @src, @status, @pri, @stage, @assigned, @batch_name, @city, @state, @notes, @created_by, GETUTCDATE(), GETUTCDATE())
               `);
+
+            const insertedLeadId = leadInsertRes.recordset[0]?.id;
+            if (insertedLeadId && leadAssignedTo) {
+              try {
+                await pool.request()
+                  .input('lead_id', sql.UniqueIdentifier, insertedLeadId)
+                  .input('assigned_to', sql.UniqueIdentifier, leadAssignedTo)
+                  .input('assigned_by', sql.UniqueIdentifier, currentUserId)
+                  .input('reason', sql.NVarChar, leadBatch ? `Bulk Upload List: ${leadBatch}` : 'Bulk Excel Import')
+                  .query(`
+                    INSERT INTO lead_assignments (id, lead_id, assigned_to, assigned_by, reason, created_at)
+                    VALUES (NEWID(), @lead_id, @assigned_to, @assigned_by, @reason, GETUTCDATE())
+                  `);
+              } catch {}
+            }
             importedCount++;
           } catch (insertErr: any) {
             errors.push({ row: rowNum, field: 'Database', message: insertErr.message });
