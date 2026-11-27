@@ -6,13 +6,15 @@ import { requirePermission } from '../middleware/permission.middleware';
 import { getPaginationParams } from '../utils/pagination';
 import { notificationService } from '../services/notification.service';
 import { parseDateFrom, parseDateTo } from '../utils/date';
+import { logger } from '../utils/logger';
+import { env } from '../config/environment';
 import { z } from 'zod';
 
 const router = Router();
 
 const clickToCallSchema = z.object({
-  customerPhone: z.string().min(10, 'Valid phone number required'),
-  did: z.string().min(1, 'DID number required'),
+  customerPhone: z.string().min(8, 'Valid phone number required'),
+  did: z.string().optional(),
   leadId: z.string().uuid().optional(),
   customerId: z.string().uuid().optional(),
   ticketId: z.string().uuid().optional(),
@@ -23,11 +25,11 @@ const dispositionSchema = z.object({
   disposition: z.enum(['Interested', 'Not Interested', 'No Answer', 'Busy', 'Call Back Required', 'Follow-up Required', 'Converted', 'Wrong Number', 'Voicemail']),
   notes: z.string().optional(),
   followUpRequired: z.boolean().optional(),
-  followUpDatetime: z.string().datetime().optional(),
+  followUpDatetime: z.string().optional(),
   followUpAssignedTo: z.string().uuid().optional(),
 });
 
-// Click-to-Call
+// Click-to-Call (Initiates bridge call between agent & customer via https://api.ivrsolutions.in)
 router.post('/click-to-call', requirePermission('calling', 'click-to-call', 'create'), async (req: Request, res: Response) => {
   if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
   const parsed = clickToCallSchema.safeParse(req.body);
@@ -38,7 +40,7 @@ router.post('/click-to-call', requirePermission('calling', 'click-to-call', 'cre
 
   const pool = getPool();
 
-  // Get agent's extension
+  // 1. Get agent's extension
   const agentResult = await pool.request()
     .input('user_id', sql.UniqueIdentifier, req.user.userId)
     .query<{ extension: string; did_number: string }>(`
@@ -50,18 +52,30 @@ router.post('/click-to-call', requirePermission('calling', 'click-to-call', 'cre
   if (!agentExtension) {
     const userRes = await pool.request()
       .input('user_id', sql.UniqueIdentifier, req.user.userId)
-      .query<{ ivr_extension: string }>('SELECT ivr_extension FROM users WHERE id = @user_id');
-    agentExtension = userRes.recordset[0]?.ivr_extension;
+      .query<{ ivr_extension: string; phone: string }>('SELECT ivr_extension, phone FROM users WHERE id = @user_id');
+    agentExtension = userRes.recordset[0]?.ivr_extension || userRes.recordset[0]?.phone;
   }
 
+  // Fallback to default extension if still empty
   if (!agentExtension) {
-    sendError(res, 'No IVR agent extension configured for your account. Please contact your administrator.', 400);
-    return;
+    agentExtension = '101';
   }
 
-  const did = parsed.data.did ?? agent?.did_number;
+  // 2. Resolve DID number
+  let did = parsed.data.did;
+  if (!did || did === 'DEFAULT_DID') {
+    did = agent?.did_number || env.IVR_DID_NUMBER || '01140005000';
+    try {
+      const settRes = await pool.request().query<{ value: string }>(`
+        SELECT value FROM settings WHERE [key] = 'ivr_did_number'
+      `);
+      if (settRes.recordset[0]?.value) {
+        did = settRes.recordset[0].value.trim();
+      }
+    } catch {}
+  }
 
-  // Create call record first
+  // 3. Create call record first
   const callResult = await pool.request()
     .input('caller_number', sql.NVarChar, agentExtension)
     .input('customer_number', sql.NVarChar, parsed.data.customerPhone)
@@ -81,25 +95,25 @@ router.post('/click-to-call', requirePermission('calling', 'click-to-call', 'cre
 
   const callId = callResult.recordset[0].id;
 
-  // Initiate IVR call
+  // 4. Initiate IVR Solutions call
   const ivrResult = await ivrService.initiateClickToCall({
     agentExtension,
     did,
     customerPhone: parsed.data.customerPhone,
+    customId: callId,
   });
 
   if (!ivrResult.success) {
-    // Update call record as failed
     await pool.request()
       .input('id', sql.UniqueIdentifier, callId)
       .input('notes', sql.NVarChar, `Call failed: ${ivrResult.message}`)
-      .query('UPDATE calls SET status = \'failed\', notes = @notes WHERE id = @id');
+      .query("UPDATE calls SET status = 'failed', notes = @notes WHERE id = @id");
 
     sendError(res, `Call initiation failed: ${ivrResult.message}`, 503);
     return;
   }
 
-  // Update call with IVR call ID
+  // Update call with IVR call ID if returned
   if (ivrResult.callId) {
     await pool.request()
       .input('id', sql.UniqueIdentifier, callId)
@@ -107,7 +121,7 @@ router.post('/click-to-call', requirePermission('calling', 'click-to-call', 'cre
       .query('UPDATE calls SET ivr_call_id = @ivr_call_id WHERE id = @id');
   }
 
-  sendSuccess(res, { callId, ivrCallId: ivrResult.callId, message: ivrResult.message }, 'Call initiated successfully');
+  sendSuccess(res, { callId, ivrCallId: ivrResult.callId, message: ivrResult.message }, 'Call initiated successfully via IVR Solutions bridge');
 });
 
 // Add call disposition
@@ -138,11 +152,10 @@ router.post('/:callId/disposition', requirePermission('calling', 'click-to-call'
   await pool.request()
     .input('id', sql.UniqueIdentifier, req.params.callId)
     .input('outcome', sql.NVarChar, parsed.data.disposition)
-    .query('UPDATE calls SET outcome = @outcome, status = \'completed\' WHERE id = @id');
+    .query("UPDATE calls SET outcome = @outcome, status = 'completed' WHERE id = @id");
 
   // Auto-create follow-up if required
   if (parsed.data.followUpRequired && parsed.data.followUpDatetime) {
-    // Get call details for context
     const callResult = await pool.request()
       .input('id', sql.UniqueIdentifier, req.params.callId)
       .query<{ lead_id: string; customer_id: string; customer_number: string }>(`
@@ -166,15 +179,16 @@ router.post('/:callId/disposition', requirePermission('calling', 'click-to-call'
         VALUES (@type, @lead_id, @customer_id, @call_id, @title, @description, @scheduled_at, @assigned_to, @priority, @created_by)
       `);
 
-    // Notify assignee
     const assigneeId = parsed.data.followUpAssignedTo ?? req.user.userId;
-    await notificationService.create({
-      userId: assigneeId,
-      type: 'followup_created',
-      title: 'New Follow-up Scheduled',
-      body: `Follow-up call scheduled for ${new Date(parsed.data.followUpDatetime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
-      data: { entityType: 'followup', action: 'created' },
-    });
+    try {
+      await notificationService.create({
+        userId: assigneeId,
+        type: 'followup_created',
+        title: 'New Follow-up Scheduled',
+        body: `Follow-up call scheduled for ${new Date(parsed.data.followUpDatetime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
+        data: { entityType: 'followup', action: 'created' },
+      });
+    } catch {}
   }
 
   sendSuccess(res, null, 'Disposition saved successfully');
@@ -244,63 +258,202 @@ router.get('/history', requirePermission('calling', 'history', 'view'), async (r
     OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
   `);
 
-  sendPaginated(res, dataResult.recordset, { page, limit, total: countResult.recordset[0]?.total ?? 0, totalPages: Math.ceil((countResult.recordset[0]?.total ?? 0) / limit) });
+  sendPaginated(res, dataResult.recordset, {
+    page,
+    limit,
+    total: countResult.recordset[0]?.total ?? 0,
+    totalPages: Math.ceil((countResult.recordset[0]?.total ?? 0) / limit),
+  });
 });
 
-// IVR webhook (for inbound call events)
-router.post('/webhook', async (req: Request, res: Response) => {
-  // Log webhook payload
+// Synchronize Call Detail Records (CDR) & Audio Recordings from https://api.ivrsolutions.in
+router.post('/sync-logs', requirePermission('calling', 'history', 'view'), async (req: Request, res: Response) => {
+  if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
   const pool = getPool();
-  const payload = req.body;
 
   try {
-    // Handle different webhook event types
-    const eventType = payload.event ?? payload.type ?? payload.status;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const pastWeekStr = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    if (eventType === 'inbound' || payload.direction === 'inbound') {
-      const callerNumber = payload.caller_no ?? payload.from ?? payload.phone;
-      const did = payload.did ?? payload.to;
+    const fromDate = (req.body.fromDate || pastWeekStr).toString().trim();
+    const toDate = (req.body.toDate || todayStr).toString().trim();
 
-      // Check if caller matches a customer or lead
+    const [callLogs, ctcLogs] = await Promise.all([
+      ivrService.getCallLogs({ fromDate, toDate }),
+      ivrService.getCTCLogs({ fromDate, toDate }),
+    ]);
+
+    const combinedLogs = [...callLogs, ...ctcLogs];
+    let syncedCount = 0;
+
+    for (const log of combinedLogs) {
+      if (!log.customerNumber && !log.callerNumber) continue;
+
+      const customerPhone = (log.customerNumber || log.callerNumber || '').replace(/\D/g, '');
+      const callStatus = (log.status || 'completed').toLowerCase();
+      const ivrCallId = log.callId || `IVR-${customerPhone}-${Date.now()}`;
+
+      // Check if call already exists by ivr_call_id
+      const existing = await pool.request()
+        .input('ivr_call_id', sql.NVarChar, ivrCallId)
+        .query<{ id: string }>('SELECT id FROM calls WHERE ivr_call_id = @ivr_call_id');
+
+      if (existing.recordset.length > 0) {
+        // Update call duration & recording
+        await pool.request()
+          .input('id', sql.UniqueIdentifier, existing.recordset[0].id)
+          .input('duration', sql.Int, log.duration || 0)
+          .input('status', sql.NVarChar, callStatus)
+          .input('recording_url', sql.NVarChar, log.recordingUrl || null)
+          .query(`
+            UPDATE calls
+            SET duration = CASE WHEN @duration > 0 THEN @duration ELSE duration END,
+                status = @status,
+                recording_url = ISNULL(@recording_url, recording_url)
+            WHERE id = @id
+          `);
+        syncedCount++;
+      } else {
+        // Match caller/customer phone to existing lead or customer
+        const searchDigits = customerPhone.length > 10 ? customerPhone.slice(-10) : customerPhone;
+        const matchRes = await pool.request()
+          .input('phone', sql.NVarChar, searchDigits)
+          .query<{ type: string; id: string }>(`
+            SELECT TOP 1 'lead' as type, id FROM leads WHERE phone LIKE '%' + @phone AND deleted_at IS NULL
+            UNION ALL
+            SELECT TOP 1 'customer' as type, id FROM customers WHERE phone LIKE '%' + @phone AND deleted_at IS NULL
+          `);
+        const match = matchRes.recordset[0];
+
+        const initiatedAt = log.startTime ? new Date(log.startTime) : new Date();
+
+        await pool.request()
+          .input('ivr_call_id', sql.NVarChar, ivrCallId)
+          .input('caller_number', sql.NVarChar, log.callerNumber || log.agentExtension || 'Agent')
+          .input('customer_number', sql.NVarChar, log.customerNumber || customerPhone)
+          .input('direction', sql.NVarChar, log.direction || 'outbound')
+          .input('status', sql.NVarChar, callStatus)
+          .input('duration', sql.Int, log.duration || 0)
+          .input('recording_url', sql.NVarChar, log.recordingUrl || null)
+          .input('lead_id', sql.UniqueIdentifier, match?.type === 'lead' ? match.id : null)
+          .input('customer_id', sql.UniqueIdentifier, match?.type === 'customer' ? match.id : null)
+          .input('assigned_to', sql.UniqueIdentifier, req.user.userId)
+          .input('initiated_at', sql.DateTime2, initiatedAt)
+          .query(`
+            INSERT INTO calls (ivr_call_id, caller_number, customer_number, direction, status, duration, recording_url, lead_id, customer_id, assigned_to, initiated_at)
+            VALUES (@ivr_call_id, @caller_number, @customer_number, @direction, @status, @duration, @recording_url, @lead_id, @customer_id, @assigned_to, @initiated_at)
+          `);
+        syncedCount++;
+      }
+    }
+
+    sendSuccess(
+      res,
+      { syncedCount, totalFetched: combinedLogs.length },
+      `Successfully synced ${syncedCount} call records and audio recordings from IVR Solutions`
+    );
+  } catch (err: any) {
+    sendError(res, 'Failed to sync call logs: ' + err.message, 500);
+  }
+});
+
+// Register Webhook URL with IVR Solutions
+router.post('/register-webhook', requirePermission('calling', 'ivr-settings', 'edit'), async (req: Request, res: Response) => {
+  const webhookUrl = req.body.webhookUrl || 'https://crm.automationcafe.in/api/v1/calls/webhook';
+  const result = await ivrService.registerWebhook(webhookUrl);
+  if (result.success) {
+    sendSuccess(res, result, result.message);
+  } else {
+    sendError(res, result.message, 400);
+  }
+});
+
+// IVR Solutions Real-Time Webhook (Handles Inbound calls, Hangup events, Recordings, and CDR updates)
+const handleWebhook = async (req: Request, res: Response) => {
+  const pool = getPool();
+  const payload = { ...req.query, ...req.body };
+
+  try {
+    const callerNumber = (payload.caller_no || payload.from || payload.phone || payload.caller || '').toString().trim();
+    const did = (payload.did || payload.to || payload.did_number || '').toString().trim();
+    const ivrCallId = payload.call_id || payload.unique_id || payload.CallId || null;
+    const duration = typeof payload.duration === 'number' ? payload.duration : parseInt(payload.duration || '0', 10);
+    const recordingUrl = payload.recording_url || payload.recording || payload.record_file || null;
+    const status = (payload.status || payload.event || payload.disposition || 'answered').toString().toLowerCase();
+
+    // 1. Update existing call if ivrCallId matches
+    if (ivrCallId) {
+      const existing = await pool.request()
+        .input('ivr_call_id', sql.NVarChar, ivrCallId)
+        .query<{ id: string }>('SELECT id FROM calls WHERE ivr_call_id = @ivr_call_id');
+
+      if (existing.recordset.length > 0) {
+        await pool.request()
+          .input('id', sql.UniqueIdentifier, existing.recordset[0].id)
+          .input('status', sql.NVarChar, status)
+          .input('duration', sql.Int, duration)
+          .input('recording_url', sql.NVarChar, recordingUrl)
+          .input('ended_at', sql.DateTime2, new Date())
+          .query(`
+            UPDATE calls
+            SET status = @status,
+                duration = CASE WHEN @duration > 0 THEN @duration ELSE duration END,
+                recording_url = ISNULL(@recording_url, recording_url),
+                ended_at = ISNULL(@ended_at, ended_at)
+            WHERE id = @id
+          `);
+        res.status(200).json({ received: true, updated: true });
+        return;
+      }
+    }
+
+    // 2. Otherwise insert new inbound call record
+    if (callerNumber || did) {
+      const cleanPhone = callerNumber.replace(/\D/g, '');
+      const searchDigits = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
       const matchResult = await pool.request()
-        .input('phone', sql.NVarChar, callerNumber?.replace(/\D/g, ''))
-        .query(`
+        .input('phone', sql.NVarChar, searchDigits)
+        .query<{ type: string; id: string; name: string }>(`
           SELECT TOP 1 'lead' as type, id, first_name + ISNULL(' ' + last_name, '') as name
-          FROM leads WHERE phone = @phone AND deleted_at IS NULL
+          FROM leads WHERE phone LIKE '%' + @phone AND deleted_at IS NULL
           UNION ALL
           SELECT TOP 1 'customer' as type, id, first_name + ISNULL(' ' + last_name, '') as name
-          FROM customers WHERE phone = @phone AND deleted_at IS NULL
+          FROM customers WHERE phone LIKE '%' + @phone AND deleted_at IS NULL
         `);
 
       const match = matchResult.recordset[0];
 
-      // Create call record
       await pool.request()
-        .input('ivr_call_id', sql.NVarChar, payload.call_id ?? payload.unique_id ?? null)
-        .input('caller_number', sql.NVarChar, callerNumber ?? null)
-        .input('customer_number', sql.NVarChar, did ?? null)
-        .input('direction', sql.NVarChar, 'inbound')
-        .input('status', sql.NVarChar, 'answered')
+        .input('ivr_call_id', sql.NVarChar, ivrCallId)
+        .input('caller_number', sql.NVarChar, callerNumber || null)
+        .input('customer_number', sql.NVarChar, did || null)
+        .input('direction', sql.NVarChar, payload.direction || 'inbound')
+        .input('status', sql.NVarChar, status)
+        .input('duration', sql.Int, duration)
+        .input('recording_url', sql.NVarChar, recordingUrl)
         .input('lead_id', sql.UniqueIdentifier, match?.type === 'lead' ? match.id : null)
         .input('customer_id', sql.UniqueIdentifier, match?.type === 'customer' ? match.id : null)
         .input('initiated_at', sql.DateTime2, new Date())
         .query(`
-          INSERT INTO calls (ivr_call_id, caller_number, customer_number, direction, status, lead_id, customer_id, initiated_at)
-          VALUES (@ivr_call_id, @caller_number, @customer_number, @direction, @status, @lead_id, @customer_id, @initiated_at)
+          INSERT INTO calls (ivr_call_id, caller_number, customer_number, direction, status, duration, recording_url, lead_id, customer_id, initiated_at)
+          VALUES (@ivr_call_id, @caller_number, @customer_number, @direction, @status, @duration, @recording_url, @lead_id, @customer_id, @initiated_at)
         `);
     }
 
     res.status(200).json({ received: true });
-  } catch (err) {
-    res.status(200).json({ received: true }); // Always respond 200 to webhooks
+  } catch (err: any) {
+    logger.warn('IVR Webhook processing warning', { error: err.message });
+    res.status(200).json({ received: true });
   }
-});
+};
 
-// IVR health check
+router.post('/webhook', handleWebhook);
+router.get('/webhook', handleWebhook);
+
+// IVR Solutions gateway health check
 router.get('/health', requirePermission('calling', 'ivr-settings', 'view'), async (req: Request, res: Response) => {
   const result = await ivrService.testConnection();
-  sendSuccess(res, result, result.connected ? 'IVR connected' : 'IVR not connected');
+  sendSuccess(res, result, result.connected ? 'IVR connected successfully' : result.message);
 });
 
 export default router;
-

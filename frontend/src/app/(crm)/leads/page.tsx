@@ -44,6 +44,7 @@ import {
   X,
   Search,
   AlertCircle,
+  Info,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -400,22 +401,34 @@ export default function LeadsPage() {
       cell: (lead: Lead) => {
         const anyLead = lead as any;
         const fullName = `${anyLead.first_name || lead.firstName || ''} ${anyLead.last_name || lead.lastName || ''}`.trim() || 'Unnamed Lead';
+        const batchName = anyLead.batch_name;
         return (
           <div className="flex flex-col">
-            <Link
-              href={`/leads/${lead.id}`}
-              className="font-medium text-foreground hover:text-primary hover:underline"
-            >
-              {fullName}
-            </Link>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-xs text-muted-foreground">{lead.company || anyLead.company || 'Individual Prospect'}</span>
-              {anyLead.batch_name && (
-                <span className="text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.2 rounded font-medium">
-                  {anyLead.batch_name}
-                </span>
+            <div className="flex items-center gap-1.5">
+              <Link
+                href={`/leads/${lead.id}`}
+                className="font-medium text-foreground hover:text-primary hover:underline"
+              >
+                {fullName}
+              </Link>
+              {batchName && (
+                <div className="relative group inline-flex items-center cursor-pointer">
+                  <span
+                    className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950/70 dark:text-sky-400 hover:bg-sky-200 transition-colors"
+                    title={`Batch: ${batchName}`}
+                  >
+                    <Info className="h-2.5 w-2.5" />
+                  </span>
+                  <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50">
+                    <div className="rounded-md bg-slate-900 text-white text-[11px] font-sans px-2 py-1 shadow-lg whitespace-nowrap">
+                      Batch: {batchName}
+                    </div>
+                    <div className="w-1.5 h-1.5 bg-slate-900 rotate-45 -mt-0.5" />
+                  </div>
+                </div>
               )}
             </div>
+            <span className="text-xs text-muted-foreground mt-0.5">{lead.company || anyLead.company || 'Individual Prospect'}</span>
           </div>
         );
       },

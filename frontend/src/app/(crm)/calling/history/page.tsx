@@ -8,7 +8,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PaginationMeta } from '@/types/api';
 import { formatDate } from '@/lib/utils';
-import { PhoneCall, Volume2, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { PhoneCall, Volume2, ArrowDownLeft, ArrowUpRight, RefreshCw } from 'lucide-react';
 import api from '@/services/api';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -22,8 +22,24 @@ export default function CallHistoryPage() {
     totalPages: 1,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [directionFilter, setDirectionFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSyncLogs = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await api.post('/calls/sync-logs');
+      if (res.data?.success) {
+        toast.success(res.data.message || 'Call logs & recordings synced from IVR Solutions');
+        fetchCalls();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to sync logs from IVR Solutions');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const fetchCalls = useCallback(async () => {
     setIsLoading(true);
@@ -152,11 +168,23 @@ export default function CallHistoryPage() {
           { label: 'Call History' },
         ]}
         actions={
-          <Link href="/calling/click-to-call">
-            <Button size="sm" className="h-9 gap-1.5 text-xs font-semibold">
-              <PhoneCall className="h-3.5 w-3.5" /> Make a Call
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSyncLogs}
+              disabled={isSyncing}
+              className="h-9 gap-1.5 text-xs font-semibold"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync IVR Logs'}
             </Button>
-          </Link>
+            <Link href="/calling/click-to-call">
+              <Button size="sm" className="h-9 gap-1.5 text-xs font-semibold">
+                <PhoneCall className="h-3.5 w-3.5" /> Make a Call
+              </Button>
+            </Link>
+          </div>
         }
       />
 

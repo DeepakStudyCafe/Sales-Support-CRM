@@ -30,9 +30,10 @@ const environmentSchema = z.object({
   JWT_REFRESH_EXPIRES: z.string().default('7d'),
 
   // IVR
-  IVR_API_BASE_URL: z.string().url().optional(),
+  IVR_API_BASE_URL: z.string().optional().default('https://api.ivrsolutions.in'),
   IVR_API_TOKEN: z.string().optional(),
   IVR_SUBDOMAIN: z.string().optional(),
+  IVR_DID_NUMBER: z.string().optional().default('01140005000'),
 
   // Email
   SMTP_HOST: z.string().optional().default('smtp.gmail.com'),
