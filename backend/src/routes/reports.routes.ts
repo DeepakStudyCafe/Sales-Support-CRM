@@ -3,6 +3,7 @@ import { getPool, sql } from '../config/database';
 import { sendSuccess, sendError, sendPaginated } from '../utils/response';
 import { requirePermission } from '../middleware/permission.middleware';
 import { getPaginationParams } from '../utils/pagination';
+import { parseDateFrom, parseDateTo } from '../utils/date';
 
 const router = Router();
 
@@ -10,8 +11,8 @@ const router = Router();
 router.get('/leads', requirePermission('reports', 'leads', 'view'), async (req: Request, res: Response) => {
   if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
   const pool = getPool();
-  const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string + 'T23:59:59Z') : new Date();
+  const dateFrom = parseDateFrom(req.query.dateFrom, 30);
+  const dateTo = parseDateTo(req.query.dateTo);
 
   const request = pool.request();
   request.input('date_from', sql.DateTime2, dateFrom);
@@ -59,8 +60,8 @@ router.get('/leads', requirePermission('reports', 'leads', 'view'), async (req: 
 // Sales reports
 router.get('/sales', requirePermission('reports', 'sales', 'view'), async (req: Request, res: Response) => {
   const pool = getPool();
-  const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string + 'T23:59:59Z') : new Date();
+  const dateFrom = parseDateFrom(req.query.dateFrom, 30);
+  const dateTo = parseDateTo(req.query.dateTo);
 
   const request = pool.request();
   request.input('date_from', sql.DateTime2, dateFrom);
@@ -93,8 +94,8 @@ router.get('/sales', requirePermission('reports', 'sales', 'view'), async (req: 
 // Calling reports
 router.get('/calling', requirePermission('reports', 'calling', 'view'), async (req: Request, res: Response) => {
   const pool = getPool();
-  const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string + 'T23:59:59Z') : new Date();
+  const dateFrom = parseDateFrom(req.query.dateFrom, 30);
+  const dateTo = parseDateTo(req.query.dateTo);
 
   const request = pool.request();
   request.input('date_from', sql.DateTime2, dateFrom);
@@ -144,8 +145,8 @@ router.get('/calling', requirePermission('reports', 'calling', 'view'), async (r
 // Support reports
 router.get('/support', requirePermission('reports', 'support', 'view'), async (req: Request, res: Response) => {
   const pool = getPool();
-  const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string + 'T23:59:59Z') : new Date();
+  const dateFrom = parseDateFrom(req.query.dateFrom, 30);
+  const dateTo = parseDateTo(req.query.dateTo);
 
   const request = pool.request();
   request.input('date_from', sql.DateTime2, dateFrom);
@@ -180,8 +181,8 @@ router.get('/support', requirePermission('reports', 'support', 'view'), async (r
 // Employee performance
 router.get('/performance', requirePermission('reports', 'performance', 'view'), async (req: Request, res: Response) => {
   const pool = getPool();
-  const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string + 'T23:59:59Z') : new Date();
+  const dateFrom = parseDateFrom(req.query.dateFrom, 30);
+  const dateTo = parseDateTo(req.query.dateTo);
 
   const result = await pool.request()
     .input('date_from', sql.DateTime2, dateFrom)

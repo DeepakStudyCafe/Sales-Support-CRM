@@ -5,6 +5,7 @@ import { sendSuccess, sendError, sendPaginated } from '../utils/response';
 import { requirePermission } from '../middleware/permission.middleware';
 import { getPaginationParams } from '../utils/pagination';
 import { notificationService } from '../services/notification.service';
+import { parseDateFrom, parseDateTo } from '../utils/date';
 import { z } from 'zod';
 
 const router = Router();
@@ -207,11 +208,11 @@ router.get('/history', requirePermission('calling', 'history', 'view'), async (r
   }
   if (req.query.dateFrom) {
     where.push('c.initiated_at >= @date_from');
-    request.input('date_from', sql.DateTime2, new Date(req.query.dateFrom as string));
+    request.input('date_from', sql.DateTime2, parseDateFrom(req.query.dateFrom));
   }
   if (req.query.dateTo) {
     where.push('c.initiated_at <= @date_to');
-    request.input('date_to', sql.DateTime2, new Date(req.query.dateTo as string + 'T23:59:59Z'));
+    request.input('date_to', sql.DateTime2, parseDateTo(req.query.dateTo));
   }
 
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
@@ -221,8 +222,8 @@ router.get('/history', requirePermission('calling', 'history', 'view'), async (r
   if (req.query.search) countRequest.input('search', sql.NVarChar, `%${req.query.search}%`);
   if (req.query.direction) countRequest.input('direction', sql.NVarChar, req.query.direction as string);
   if (req.query.status) countRequest.input('status', sql.NVarChar, req.query.status as string);
-  if (req.query.dateFrom) countRequest.input('date_from', sql.DateTime2, new Date(req.query.dateFrom as string));
-  if (req.query.dateTo) countRequest.input('date_to', sql.DateTime2, new Date(req.query.dateTo as string + 'T23:59:59Z'));
+  if (req.query.dateFrom) countRequest.input('date_from', sql.DateTime2, parseDateFrom(req.query.dateFrom));
+  if (req.query.dateTo) countRequest.input('date_to', sql.DateTime2, parseDateTo(req.query.dateTo));
 
   const countResult = await countRequest.query<{ total: number }>(`SELECT COUNT(1) as total FROM calls c ${whereClause}`);
 

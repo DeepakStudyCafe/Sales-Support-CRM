@@ -4,6 +4,7 @@ import { sendSuccess, sendError, sendPaginated } from '../utils/response';
 import { requirePermission } from '../middleware/permission.middleware';
 import { getPaginationParams } from '../utils/pagination';
 import { notificationService } from '../services/notification.service';
+import { parseDateFrom, parseDateTo } from '../utils/date';
 import { z } from 'zod';
 
 const router = Router();
@@ -92,11 +93,11 @@ router.get('/', requirePermission('tickets', 'all', 'view'), async (req: Request
   }
   if (req.query.dateFrom) {
     where.push('t.created_at >= @date_from');
-    request.input('date_from', sql.DateTime2, new Date(req.query.dateFrom as string));
+    request.input('date_from', sql.DateTime2, parseDateFrom(req.query.dateFrom));
   }
   if (req.query.dateTo) {
     where.push('t.created_at <= @date_to');
-    request.input('date_to', sql.DateTime2, new Date(req.query.dateTo as string + 'T23:59:59Z'));
+    request.input('date_to', sql.DateTime2, parseDateTo(req.query.dateTo));
   }
 
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
@@ -108,8 +109,8 @@ router.get('/', requirePermission('tickets', 'all', 'view'), async (req: Request
   if (req.query.priority) countReq.input('priority', sql.NVarChar, req.query.priority as string);
   if (req.query.assignedTo) countReq.input('assigned_to', sql.UniqueIdentifier, req.query.assignedTo as string);
   if (req.query.search) countReq.input('search', sql.NVarChar, `%${req.query.search}%`);
-  if (req.query.dateFrom) countReq.input('date_from', sql.DateTime2, new Date(req.query.dateFrom as string));
-  if (req.query.dateTo) countReq.input('date_to', sql.DateTime2, new Date(req.query.dateTo as string + 'T23:59:59Z'));
+  if (req.query.dateFrom) countReq.input('date_from', sql.DateTime2, parseDateFrom(req.query.dateFrom));
+  if (req.query.dateTo) countReq.input('date_to', sql.DateTime2, parseDateTo(req.query.dateTo));
 
   const countResult = await countReq.query<{ total: number }>(`SELECT COUNT(1) as total FROM tickets t ${whereClause}`);
 

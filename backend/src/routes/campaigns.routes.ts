@@ -163,8 +163,94 @@ router.post('/', requirePermission('calling', 'campaigns', 'create'), async (req
   sendSuccess(res, { id: campaignId }, 'Campaign created successfully with agent allocations', 201);
 });
 
+// Progressive dialer: Fetch next lead in active campaign for the logged-in agent
+router.get('/active-feed/my-next', requirePermission('calling', 'click-to-call', 'view'), async (req: Request, res: Response) => {
+  if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
+  try {
+    const pool = getPool();
+    const nextLead = await pool.request()
+      .input('userId', sql.UniqueIdentifier, req.user.userId)
+      .query(`
+        SELECT TOP 1
+          cc.id as contact_id,
+          cc.campaign_id,
+          cc.phone,
+          cc.status as call_status,
+          c.name as campaign_name,
+          c.purpose,
+          l.id as lead_id,
+          l.first_name,
+          l.last_name,
+          l.company,
+          l.email,
+          l.status as lead_status,
+          l.priority,
+          l.value
+        FROM campaign_contacts cc
+        JOIN call_campaigns c ON cc.campaign_id = c.id
+        JOIN leads l ON cc.lead_id = l.id
+        WHERE l.assigned_to = @userId
+          AND c.status = 'Active'
+          AND cc.status = 'Pending'
+          AND l.deleted_at IS NULL
+        ORDER BY cc.created_at ASC
+      `);
+
+    sendSuccess(res, nextLead.recordset[0] ?? null);
+  } catch (err: any) {
+    sendError(res, err.message, 500);
+  }
+});
+
+// Progressive dialer: Record outcome and advance lead
+router.post('/active-feed/outcome', requirePermission('calling', 'click-to-call', 'edit'), async (req: Request, res: Response) => {
+  if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
+  const { contactId, leadId, callOutcome, leadStatus, notes, followUpDate } = req.body;
+  const pool = getPool();
+
+  try {
+    if (contactId) {
+      await pool.request()
+        .input('contactId', sql.UniqueIdentifier, contactId)
+        .input('outcome', sql.NVarChar, callOutcome || 'Completed')
+        .query(`
+          UPDATE campaign_contacts
+          SET status = 'Completed', last_outcome = @outcome, last_attempt_at = GETUTCDATE(), attempts = attempts + 1, updated_at = GETUTCDATE()
+          WHERE id = @contactId
+        `);
+    }
+
+    if (leadId && leadStatus) {
+      await pool.request()
+        .input('leadId', sql.UniqueIdentifier, leadId)
+        .input('status', sql.NVarChar, leadStatus)
+        .query(`UPDATE leads SET status = @status, updated_at = GETUTCDATE() WHERE id = @leadId`);
+    }
+
+    if (followUpDate && leadId) {
+      await pool.request()
+        .input('leadId', sql.UniqueIdentifier, leadId)
+        .input('assignedTo', sql.UniqueIdentifier, req.user.userId)
+        .input('dueAt', sql.DateTime2, new Date(followUpDate))
+        .input('notes', sql.NVarChar, notes || 'Auto-assignment follow-up')
+        .query(`
+          INSERT INTO follow_ups (lead_id, assigned_to, scheduled_at, type, status, notes)
+          VALUES (@leadId, @assignedTo, @dueAt, 'Call', 'Pending', @notes)
+        `);
+    }
+
+    sendSuccess(res, { advanced: true }, 'Outcome saved and lead updated successfully');
+  } catch (err: any) {
+    sendError(res, err.message, 500);
+  }
+});
+
 // Get campaign by ID with metrics and assigned agent details
 router.get('/:id', requirePermission('calling', 'campaigns', 'view'), async (req: Request, res: Response) => {
+  if (!/^[0-9a-fA-F-]{36}$/.test(req.params.id)) {
+    sendError(res, 'Campaign not found', 404);
+    return;
+  }
   const pool = getPool();
   const campaignResult = await pool.request()
     .input('id', sql.UniqueIdentifier, req.params.id)
@@ -253,80 +339,6 @@ router.get('/:id/agent-progress', requirePermission('calling', 'campaigns', 'vie
       GROUP BY u.id, u.first_name, u.last_name, r.name
     `);
   sendSuccess(res, progress.recordset);
-});
-
-// Progressive dialer: Fetch next lead in active campaign for the logged-in agent
-router.get('/active-feed/my-next', requirePermission('calling', 'click-to-call', 'view'), async (req: Request, res: Response) => {
-  if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
-  const pool = getPool();
-  const nextLead = await pool.request()
-    .input('userId', sql.UniqueIdentifier, req.user.userId)
-    .query(`
-      SELECT TOP 1
-        cc.id as contact_id,
-        cc.campaign_id,
-        cc.phone,
-        cc.status as call_status,
-        c.name as campaign_name,
-        c.purpose,
-        l.id as lead_id,
-        l.first_name,
-        l.last_name,
-        l.company,
-        l.email,
-        l.status as lead_status,
-        l.priority,
-        l.value
-      FROM campaign_contacts cc
-      JOIN call_campaigns c ON cc.campaign_id = c.id
-      JOIN leads l ON cc.lead_id = l.id
-      WHERE l.assigned_to = @userId
-        AND c.status = 'Active'
-        AND cc.status = 'Pending'
-        AND l.deleted_at IS NULL
-      ORDER BY cc.created_at ASC
-    `);
-
-  sendSuccess(res, nextLead.recordset[0] ?? null);
-});
-
-// Progressive dialer: Record outcome and advance lead
-router.post('/active-feed/outcome', requirePermission('calling', 'click-to-call', 'edit'), async (req: Request, res: Response) => {
-  if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
-  const { contactId, leadId, callOutcome, leadStatus, notes, followUpDate } = req.body;
-  const pool = getPool();
-
-  if (contactId) {
-    await pool.request()
-      .input('contactId', sql.UniqueIdentifier, contactId)
-      .input('outcome', sql.NVarChar, callOutcome || 'Completed')
-      .query(`
-        UPDATE campaign_contacts
-        SET status = 'Completed', last_outcome = @outcome, last_attempt_at = GETUTCDATE(), attempts = attempts + 1, updated_at = GETUTCDATE()
-        WHERE id = @contactId
-      `);
-  }
-
-  if (leadId && leadStatus) {
-    await pool.request()
-      .input('leadId', sql.UniqueIdentifier, leadId)
-      .input('status', sql.NVarChar, leadStatus)
-      .query(`UPDATE leads SET status = @status, updated_at = GETUTCDATE() WHERE id = @leadId`);
-  }
-
-  if (followUpDate && leadId) {
-    await pool.request()
-      .input('leadId', sql.UniqueIdentifier, leadId)
-      .input('assignedTo', sql.UniqueIdentifier, req.user.userId)
-      .input('dueAt', sql.DateTime2, new Date(followUpDate))
-      .input('notes', sql.NVarChar, notes || 'Auto-assignment follow-up')
-      .query(`
-        INSERT INTO follow_ups (lead_id, assigned_to, due_at, type, status, notes)
-        VALUES (@leadId, @assignedTo, @dueAt, 'Call', 'Pending', @notes)
-      `);
-  }
-
-  sendSuccess(res, { success: true }, 'Outcome recorded and advanced to next lead');
 });
 
 // Add contacts to campaign

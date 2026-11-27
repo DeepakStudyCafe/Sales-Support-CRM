@@ -1,5 +1,6 @@
 import { getPool, sql } from '../config/database';
 import { logger } from '../utils/logger';
+import { parseDateFrom, parseDateTo } from '../utils/date';
 
 interface AuditLogInput {
   userId?: string;
@@ -68,13 +69,13 @@ export class AuditService {
     }
     if (options.dateFrom) {
       where.push('al.created_at >= @date_from');
-      request.input('date_from', sql.DateTime2, new Date(options.dateFrom));
-      countRequest.input('date_from', sql.DateTime2, new Date(options.dateFrom));
+      request.input('date_from', sql.DateTime2, parseDateFrom(options.dateFrom));
+      countRequest.input('date_from', sql.DateTime2, parseDateFrom(options.dateFrom));
     }
     if (options.dateTo) {
       where.push('al.created_at <= @date_to');
-      request.input('date_to', sql.DateTime2, new Date(options.dateTo + 'T23:59:59Z'));
-      countRequest.input('date_to', sql.DateTime2, new Date(options.dateTo + 'T23:59:59Z'));
+      request.input('date_to', sql.DateTime2, parseDateTo(options.dateTo));
+      countRequest.input('date_to', sql.DateTime2, parseDateTo(options.dateTo));
     }
 
     const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';

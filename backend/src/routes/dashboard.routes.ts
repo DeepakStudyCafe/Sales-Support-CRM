@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getPool, sql } from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
 import { requirePermission } from '../middleware/permission.middleware';
+import { parseDateFrom, parseDateTo } from '../utils/date';
 
 const router = Router();
 
@@ -12,9 +13,9 @@ router.get('/overview', requirePermission('dashboard', 'overview', 'view'), asyn
     const pool = getPool();
     const isAdmin = ['Super Admin', 'Admin'].includes(req.user.roleName);
 
-    // Date range filter
-    const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string + 'T23:59:59Z') : new Date();
+    // Safe Date range filter
+    const dateFrom = parseDateFrom(req.query.dateFrom, 30);
+    const dateTo = parseDateTo(req.query.dateTo);
 
     const request = pool.request();
     request.input('date_from', sql.DateTime2, dateFrom);
@@ -29,10 +30,10 @@ router.get('/overview', requirePermission('dashboard', 'overview', 'view'), asyn
     }>(`
       SELECT
         COUNT(1) as total_leads,
-        SUM(CASE WHEN status = 'New' THEN 1 ELSE 0 END) as new_leads,
-        SUM(CASE WHEN status IN ('Assigned','Contacted','Interested','Follow-up','Qualified') THEN 1 ELSE 0 END) as active_leads,
-        SUM(CASE WHEN status = 'Converted' THEN 1 ELSE 0 END) as converted_leads,
-        SUM(CASE WHEN status = 'Lost' THEN 1 ELSE 0 END) as lost_leads
+        ISNULL(SUM(CASE WHEN status = 'New' THEN 1 ELSE 0 END), 0) as new_leads,
+        ISNULL(SUM(CASE WHEN status IN ('Assigned','Contacted','Interested','Follow-up','Qualified') THEN 1 ELSE 0 END), 0) as active_leads,
+        ISNULL(SUM(CASE WHEN status = 'Converted' THEN 1 ELSE 0 END), 0) as converted_leads,
+        ISNULL(SUM(CASE WHEN status = 'Lost' THEN 1 ELSE 0 END), 0) as lost_leads
       FROM leads WHERE deleted_at IS NULL AND created_at BETWEEN @date_from AND @date_to ${userWhere}
     `);
 
@@ -45,8 +46,8 @@ router.get('/overview', requirePermission('dashboard', 'overview', 'view'), asyn
     const callsResult = await callsReq.query<{ total_calls: number; answered_calls: number; missed_calls: number }>(`
       SELECT
         COUNT(1) as total_calls,
-        SUM(CASE WHEN status = 'answered' OR status = 'completed' THEN 1 ELSE 0 END) as answered_calls,
-        SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) as missed_calls
+        ISNULL(SUM(CASE WHEN status = 'answered' OR status = 'completed' THEN 1 ELSE 0 END), 0) as answered_calls,
+        ISNULL(SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END), 0) as missed_calls
       FROM calls WHERE initiated_at BETWEEN @date_from AND @date_to ${!isAdmin ? 'AND assigned_to = @user_id' : ''}
     `);
 
@@ -67,8 +68,8 @@ router.get('/overview', requirePermission('dashboard', 'overview', 'view'), asyn
 
     const fuResult = await fuReq.query<{ today_due: number; overdue: number }>(`
       SELECT
-        SUM(CASE WHEN scheduled_at BETWEEN @today_start AND @today_end AND status IN ('Pending','In Progress') THEN 1 ELSE 0 END) as today_due,
-        SUM(CASE WHEN scheduled_at < @now AND status IN ('Pending','In Progress') THEN 1 ELSE 0 END) as overdue
+        ISNULL(SUM(CASE WHEN scheduled_at BETWEEN @today_start AND @today_end AND status IN ('Pending','In Progress') THEN 1 ELSE 0 END), 0) as today_due,
+        ISNULL(SUM(CASE WHEN scheduled_at < @now AND status IN ('Pending','In Progress') THEN 1 ELSE 0 END), 0) as overdue
       FROM follow_ups WHERE 1=1 ${!isAdmin ? 'AND assigned_to = @user_id' : ''}
     `);
 
@@ -77,8 +78,8 @@ router.get('/overview', requirePermission('dashboard', 'overview', 'view'), asyn
     if (!isAdmin) ticketsReq.input('user_id', sql.UniqueIdentifier, req.user.userId);
     const ticketsResult = await ticketsReq.query<{ open: number; resolved: number }>(`
       SELECT
-        SUM(CASE WHEN status IN ('Open', 'In Progress', 'Waiting for Customer') THEN 1 ELSE 0 END) as [open],
-        SUM(CASE WHEN status = 'Resolved' THEN 1 ELSE 0 END) as resolved
+        ISNULL(SUM(CASE WHEN status IN ('Open', 'In Progress', 'Waiting for Customer') THEN 1 ELSE 0 END), 0) as [open],
+        ISNULL(SUM(CASE WHEN status = 'Resolved' THEN 1 ELSE 0 END), 0) as resolved
       FROM tickets WHERE 1=1 ${!isAdmin ? 'AND (assigned_to = @user_id OR created_by = @user_id)' : ''}
     `);
 

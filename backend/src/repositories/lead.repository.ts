@@ -1,5 +1,6 @@
 import { getPool, sql } from '../config/database';
 import { BaseRepository } from './base.repository';
+import { parseDateFrom, parseDateTo } from '../utils/date';
 
 export interface LeadRecord {
   id: string;
@@ -110,13 +111,13 @@ export class LeadRepository extends BaseRepository {
     }
     if (options.dateFrom) {
       where.push('l.created_at >= @date_from');
-      request.input('date_from', sql.DateTime2, new Date(options.dateFrom));
-      countRequest.input('date_from', sql.DateTime2, new Date(options.dateFrom));
+      request.input('date_from', sql.DateTime2, parseDateFrom(options.dateFrom));
+      countRequest.input('date_from', sql.DateTime2, parseDateFrom(options.dateFrom));
     }
     if (options.dateTo) {
       where.push('l.created_at <= @date_to');
-      request.input('date_to', sql.DateTime2, new Date(options.dateTo + 'T23:59:59Z'));
-      countRequest.input('date_to', sql.DateTime2, new Date(options.dateTo + 'T23:59:59Z'));
+      request.input('date_to', sql.DateTime2, parseDateTo(options.dateTo));
+      countRequest.input('date_to', sql.DateTime2, parseDateTo(options.dateTo));
     }
     if (!options.isAdmin && options.userId) {
       where.push('l.assigned_to = @user_id');
