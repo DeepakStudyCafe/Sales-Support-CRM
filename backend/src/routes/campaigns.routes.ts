@@ -163,21 +163,31 @@ router.post('/', requirePermission('calling', 'campaigns', 'create'), async (req
   sendSuccess(res, { id: campaignId }, 'Campaign created successfully with agent allocations', 201);
 });
 
-// Progressive dialer: Fetch next lead in active campaign for the logged-in agent
+// Progressive dialer: Fetch next lead in active campaign for the logged-in agent (or any active campaign for Super Admin/Admin)
 router.get('/active-feed/my-next', requirePermission('calling', 'click-to-call', 'view'), async (req: Request, res: Response) => {
   if (!req.user) { sendError(res, 'Not authenticated', 401); return; }
   try {
     const pool = getPool();
+    const isSuperOrAdmin = req.user.roleName === 'Super Admin' || req.user.roleName === 'Admin' ? 1 : 0;
+    const targetAgentId = req.query.agentId as string | undefined;
+    const campaignId = req.query.campaignId as string | undefined;
+
     const nextLead = await pool.request()
       .input('userId', sql.UniqueIdentifier, req.user.userId)
+      .input('isSuperAdmin', sql.Int, isSuperOrAdmin)
+      .input('targetAgentId', sql.UniqueIdentifier, targetAgentId && /^[0-9a-fA-F-]{36}$/.test(targetAgentId) ? targetAgentId : null)
+      .input('campaignId', sql.UniqueIdentifier, campaignId && /^[0-9a-fA-F-]{36}$/.test(campaignId) ? campaignId : null)
       .query(`
         SELECT TOP 1
           cc.id as contact_id,
           cc.campaign_id,
           cc.phone,
           cc.status as call_status,
+          cc.attempts,
           c.name as campaign_name,
           c.purpose,
+          c.calling_window_start,
+          c.calling_window_end,
           l.id as lead_id,
           l.first_name,
           l.last_name,
@@ -185,14 +195,23 @@ router.get('/active-feed/my-next', requirePermission('calling', 'click-to-call',
           l.email,
           l.status as lead_status,
           l.priority,
-          l.value
+          l.city,
+          l.state,
+          u.first_name as assigned_agent_name,
+          u.last_name as assigned_agent_last_name,
+          u.email as assigned_agent_email
         FROM campaign_contacts cc
         JOIN call_campaigns c ON cc.campaign_id = c.id
         JOIN leads l ON cc.lead_id = l.id
-        WHERE l.assigned_to = @userId
+        LEFT JOIN users u ON l.assigned_to = u.id
+        WHERE (
+          l.assigned_to = @userId
+          OR (@isSuperAdmin = 1 AND (@targetAgentId IS NULL OR l.assigned_to = @targetAgentId))
+        )
           AND c.status = 'Active'
           AND cc.status = 'Pending'
           AND l.deleted_at IS NULL
+          AND (@campaignId IS NULL OR c.id = @campaignId)
         ORDER BY cc.created_at ASC
       `);
 
@@ -232,10 +251,12 @@ router.post('/active-feed/outcome', requirePermission('calling', 'click-to-call'
         .input('leadId', sql.UniqueIdentifier, leadId)
         .input('assignedTo', sql.UniqueIdentifier, req.user.userId)
         .input('dueAt', sql.DateTime2, new Date(followUpDate))
-        .input('notes', sql.NVarChar, notes || 'Auto-assignment follow-up')
+        .input('title', sql.NVarChar, 'Campaign Call Follow-up')
+        .input('description', sql.NVarChar, notes || 'Auto-assignment progressive campaign follow-up')
+        .input('createdBy', sql.UniqueIdentifier, req.user.userId)
         .query(`
-          INSERT INTO follow_ups (lead_id, assigned_to, scheduled_at, type, status, notes)
-          VALUES (@leadId, @assignedTo, @dueAt, 'Call', 'Pending', @notes)
+          INSERT INTO follow_ups (type, title, description, scheduled_at, assigned_to, priority, lead_id, created_by)
+          VALUES ('Call', @title, @description, @dueAt, @assignedTo, 'Medium', @leadId, @createdBy)
         `);
     }
 

@@ -299,6 +299,18 @@ export default function CallingCampaignsPage() {
       header: 'Actions',
       render: (c) => (
         <div className="flex items-center gap-1.5">
+          {c.status === 'Active' && (
+            <Link href="/calling/dialer">
+              <Button
+                size="sm"
+                className="h-8 px-2.5 text-xs gap-1 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+                title="Open Live Calling Window & Dialer"
+              >
+                <PhoneCall className="h-3 w-3" /> Calling Window
+              </Button>
+            </Link>
+          )}
+
           <Button
             size="sm"
             variant="outline"
