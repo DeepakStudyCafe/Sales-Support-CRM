@@ -65,7 +65,7 @@ export class AuthController {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 15 * 60 * 1000, // 15 minutes
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
       });
 
       sendSuccess(res, {
@@ -125,18 +125,18 @@ export class AuthController {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 15 * 60 * 1000,
+        maxAge: 24 * 60 * 60 * 1000,
       });
 
       sendSuccess(res, {
         tokens: {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
-          expiresIn: 15 * 60,
+          expiresIn: 24 * 60 * 60,
         },
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-        expiresIn: 15 * 60,
+        expiresIn: 24 * 60 * 60,
       }, 'Token refreshed');
     } catch (error) {
       res.clearCookie('refresh_token');

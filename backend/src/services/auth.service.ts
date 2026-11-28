@@ -155,7 +155,7 @@ export class AuthService {
       },
       accessToken,
       refreshToken,
-      expiresIn: 15 * 60, // 15 minutes in seconds
+      expiresIn: 24 * 60 * 60, // 24 hours in seconds
     };
   }
 

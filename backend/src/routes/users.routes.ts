@@ -9,9 +9,15 @@ const router = Router();
 // Assignable employee directory (active Admin, Sales, Support) for lead/campaign assignment & tracking
 router.get('/assignable', (req, res) => usersController.getAssignable(req, res));
 
-// All users list: Super Admin gets full access; active users filter allowed for team assignment
+// All users list: Super Admin & Admin get full access; active users / dropdown queries allowed for team assignment
 router.get('/', (req, res, next) => {
-  if (req.user?.roleName === 'Super Admin' || req.query.isActive === 'true' || req.query.forAssignment === 'true') {
+  if (
+    req.user?.roleName === 'Super Admin' ||
+    req.user?.roleName === 'Admin' ||
+    req.query.isActive === 'true' ||
+    req.query.forAssignment === 'true' ||
+    req.query.limit !== undefined
+  ) {
     return usersController.list(req, res);
   }
   return requirePermission('users', 'all', 'view')(req, res, next);
